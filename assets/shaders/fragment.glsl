@@ -1,7 +1,6 @@
 #version 460 core
 
 in vec3 vPos;
-in vec3 vColor;
 in vec2 vTex;
 
 out vec4 FragColor;

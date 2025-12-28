@@ -8,6 +8,8 @@
 
 //#define DEBUG
 
+#include "../wrapper/widgets.h"
+
 #include "../glFrameWork/core.h"
 #include "../wrapper/checkError.h"
 #include "../glFrameWork/shader.h"
@@ -17,6 +19,11 @@
 #include "camera.h"
 
 #include "../application/stb_image.h" // 加载图片
+
+
+#define Ptr std::shared_ptr
+#define MPtr std::make_shared
+
 
 void setAcceleration(glm::vec3& acceleration)
 {
@@ -159,8 +166,12 @@ void Engine::setupDemoData()
         0, 1, 3, // 第一个三角形
         1, 2, 3  // 第二个三角形
     };
-    auto Vbo = new Buffer(vertices, GL_ARRAY_BUFFER, GL_STATIC_DRAW);
-    auto Ebo = new Buffer(indices, GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW);
+    auto Vbo = MPtr<Buffer<float>>(vertices, GL_ARRAY_BUFFER, GL_STATIC_DRAW);
+    auto Ebo = MPtr<Buffer<unsigned int>>(indices, GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW);
+    //widgets::Ball ball;
+    //auto Vbo = MPtr<Buffer<float>>(widgets::transformVertices(ball.vertices), GL_ARRAY_BUFFER, GL_STATIC_DRAW);
+    //auto Ebo = MPtr<Buffer<unsigned int>>(ball.indices, GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW);
+
     vao = new VAO();
     vao->addVBO(*Vbo, "3f 2f", GL_FALSE);
 
@@ -208,6 +219,8 @@ void Engine::render()
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, texture2);
+
+        //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);// 渲染线框模式
 
         for (unsigned int i = 0; i < 10; i++)
         {
