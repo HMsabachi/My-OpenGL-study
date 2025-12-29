@@ -5,6 +5,114 @@
 
 ## 📝 更新日志
 
+### v0.4.0 - 物理引擎集成与场景管理系统 (2025-01-XX)
+**重大更新：完整的物理模拟和对象管理架构**
+
+#### 🎯 主要变更
+
+- **Object 基类重构**
+  - ✨ 添加完整的变换系统：旋转（四元数）、缩放、位置
+  - ✨ 物理类型枚举：`PhysicsType` (NONE, STATIC, KINEMATIC, DYNAMIC)
+  - ✨ 碰撞形状枚举：`CollisionShape` (NONE, BOX, SPHERE, PLANE, CAPSULE)
+  - ✨ 物理初始化：`initPhysics()` 方法创建刚体和碰撞体
+  - ✨ 物理同步：`syncFromPhysics()` 和 `syncToPhysics()` 自动同步物理状态
+  - ✨ 完整的变换API：支持 getter/setter 模式访问所有变换属性
+  - 🔧 基类现在不允许直接实例化，子类必须实现 `render()` 和 `collideWith()`
+
+- **Scene 场景管理系统**（全新）
+  - ✨ 统一的对象生命周期管理：使用 `std::unique_ptr` 自动管理内存
+  - ✨ 集中式更新和渲染：`update()` 和 `render()` 方法
+  - ✨ 物理世界集成：在每帧自动更新 ReactPhysics3D 物理引擎
+  - ✨ 对象清理机制：`cleanupInactiveObjects()` 自动清理非活跃对象
+  - ✨ 类型查找功能：模板方法 `findObjectsByType<T>()` 按类型查找对象
+  - 📊 统计功能：获取总对象数和活跃对象数
+
+- **Plane 地板类**（全新）
+  - ✨ 参数化平面网格生成：可自定义 XZ 平面尺寸
+  - ✨ 纹理平铺支持：`setTextureRepeat()` 方法控制纹理重复
+  - ✨ 物理地板：作为静态物理体，支持碰撞检测
+  - 🎨 使用 EBO 优化渲染（4个顶点，6个索引）
+
+- **物理引擎完整集成**
+  - ✨ ReactPhysics3D 世界管理：在 Engine 中统一创建和配置
+  - ✨ 重力设置：默认 -9.81 m/s² (Y轴向下)
+  - ✨ 刚体类型支持：静态、运动学、动态
+  - ✨ 多种碰撞形状：盒子、球体、平面、胶囊体
+  - ✨ 质量和密度配置：动态物体支持自定义质量
+  - 🔄 自动物理同步：动态物体每帧从物理引擎同步变换
+
+- **现有类适配**
+  - 🔧 **Cube 类**：
+    - 使用四元数旋转替代欧拉角
+    - 支持物理模拟（可选）
+    - 渲染时使用父类变换信息
+  - 🔧 **Sphere 类**：
+    - 添加缩放支持
+    - 支持物理模拟（可选）
+    - 使用父类变换系统
+  - 🔧 **Engine 类**：
+    - 集成 Scene 管理器
+    - 移除直接管理的 `cubes` 和 `spheres` 向量
+    - 物理世界初始化和配置
+    - 通过 Scene 统一管理所有对象
+
+#### 🎮 示例场景
+在 `Engine::setupDemoData()` 中创建了演示场景：
+- 🏗️ **地板**：50x50 单位的静态物理平面，10x10 纹理平铺
+- 🎲 **动态立方体**：前5个立方体具有物理模拟，会受重力影响下落
+- ⚫ **动态球体**：1个球体，具有完整的物理碰撞
+- 🎨 **静态立方体**：其余5个立方体仅作为视觉装饰
+
+#### 💡 使用示例
+
+```cpp
+// 1. 创建物理地板
+Plane* floor = new Plane(engine, glm::vec3(0.0f, -5.0f, 0.0f), 
+                         glm::vec2(50.0f, 50.0f), shader, texture);
+floor->setTextureRepeat(10.0f, 10.0f);
+floor->initPhysics(Object::PhysicsType::STATIC, 
+                   Object::CollisionShape::PLANE, 
+                   glm::vec3(50.0f, 0.2f, 50.0f));
+scene->addObject(floor);
+
+// 2. 创建动态物理立方体
+Cube* cube = new Cube(engine, position, glm::vec3(1.0f), 
+                      shader, tex1, tex2);
+cube->initPhysics(Object::PhysicsType::DYNAMIC,  // 动态物理体
+                  Object::CollisionShape::BOX,    // 盒子碰撞形状
+                  glm::vec3(1.0f),                // 形状尺寸
+                  1.0f);                          // 质量(kg)
+scene->addObject(cube);
+
+// 3. 场景自动管理生命周期
+scene->update(deltaTime);  // 更新物理和所有对象
+scene->render();           // 渲染所有活跃对象
+scene->cleanupInactiveObjects();  // 清理销毁的对象
+```
+
+#### 🏗️ 架构优势
+1. **统一管理**：所有游戏对象通过 Scene 集中管理，代码更清晰
+2. **自动内存管理**：使用智能指针，避免内存泄漏
+3. **物理引擎深度集成**：完整支持 ReactPhysics3D 的所有特性
+4. **灵活扩展**：Object 基类设计良好，易于派生新对象类型
+5. **生命周期控制**：支持对象激活/销毁，自动清理机制
+
+#### 🐛 Bug 修复
+- 修复 Cube 旋转设置时的递归调用问题（使用 `Object::setRotation`）
+- 修正 Plane 类中 VAO 的 EBO 设置（使用 `addEBO` 而不是 `setEBO`）
+- 优化物理同步逻辑，避免静态物体不必要的变换更新
+
+#### 📂 涉及文件
+- `engine/object/object.h` & `.cpp` - Object 基类重构
+- `engine/scene.h` & `.cpp` - 新增场景管理系统
+- `engine/object/plane.h` & `.cpp` - 新增地板类
+- `engine/object/cube.cpp` - 适配物理系统
+- `engine/object/sphere.cpp` - 适配物理系统
+- `engine/engine.h` & `.cpp` - 集成 Scene 和物理引擎
+- `engine/CMakeLists.txt` - 添加新文件编译配置
+
+---
+
 ### v0.3.0 - Shader Uniform 系统重构 (2025-01-XX)
 **核心改进：统一的 Shader 管理系统**
 
@@ -113,11 +221,12 @@
 ├── engine/              # 游戏引擎核心
 │   ├── engine.h/cpp     # 引擎主类
 │   ├── camera.h/cpp     # 相机系统
+│   ├── scene.h/cpp      # 场景管理系统 ✨
 │   └── object/          # 游戏对象
-│       ├── object.h/cpp    # 对象基类
+│       ├── object.h/cpp    # 对象基类（物理引擎集成）
 │       ├── cube.h/cpp      # 立方体
 │       ├── sphere.h/cpp    # 球体
-│       └── floor.h/cpp     # 地板
+│       └── plane.h/cpp     # 地板 ✨
 ├── wrapper/             # 辅助工具
 │   ├── widgets.h/cpp    # 几何体生成器
 │   └── checkError.h     # OpenGL 错误检查
@@ -168,9 +277,12 @@ cmake --build build --config Release
 - ✅ VAO/VBO/EBO 封装
 - ✅ 纹理加载与绑定
 - ✅ FPS 相机系统
-- ✅ 参数化几何体生成（立方体、球体）
+- ✅ 参数化几何体生成（立方体、球体、平面）
 - ✅ 对象化渲染系统
 - ✅ 物理引擎集成（ReactPhysics3D）
+- ✅ 场景管理系统
+- ✅ 刚体物理模拟（重力、碰撞）
+- ✅ 四元数旋转系统
 
 ### 待实现功能
 - ⬜ 光照系统（Phong/PBR）
@@ -178,8 +290,21 @@ cmake --build build --config Release
 - ⬜ 帧缓冲与后处理
 - ⬜ 天空盒
 - ⬜ 模型加载（Assimp）
-- ⬜ 物理碰撞响应
+- ⬜ 物理碰撞响应回调
 - ⬜ 粒子系统
+- ⬜ 音频系统
+- ⬜ GUI 系统（ImGui）
+
+---
+
+## 🎮 控制说明
+
+### 相机控制
+- **W/S/A/D**: 前后左右移动
+- **Space**: 向上移动
+- **Left Shift**: 向下移动
+- **鼠标移动**: 视角旋转
+- **Left Alt**: 切换鼠标捕获模式
 
 ---
 
@@ -187,6 +312,7 @@ cmake --build build --config Release
 - [LearnOpenGL CN](https://learnopengl-cn.github.io/)
 - [OpenGL 官方文档](https://www.opengl.org/documentation/)
 - [ReactPhysics3D 文档](https://www.reactphysics3d.com/documentation.html)
+- [GLM 文档](https://glm.g-truc.net/0.9.9/index.html)
 
 ---
 

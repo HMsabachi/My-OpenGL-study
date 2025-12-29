@@ -6,6 +6,8 @@ Cube::Cube(Engine* engine, const glm::vec3& position, const glm::vec3& size, Sha
     : Object(engine, position), m_size(size), m_shader(shader), m_texture1(texture1), m_texture2(texture2),
       m_rotationAngle(0.0f), m_rotationAxis(glm::vec3(1.0f, 0.3f, 0.5f))
 {
+    // 设置缩放
+    setScale(size);
     initMesh();
 }
 
@@ -64,12 +66,19 @@ void Cube::initMesh() {
 }
 
 void Cube::update(float deltaTime) {
-    // 可以在这里添加旋转逻辑或其他更新逻辑
+    // 调用父类更新（处理物理同步）
+    Object::update(deltaTime);
+    
+    // 可以在这里添加特定于Cube的更新逻辑
 }
 
 void Cube::setRotation(float angle, const glm::vec3& axis) {
     m_rotationAngle = angle;
     m_rotationAxis = axis;
+    
+    // 将欧拉角旋转转换为四元数并设置到父类
+    glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(angle), axis);
+    Object::setRotation(glm::quat_cast(rotationMatrix));
 }
 
 void Cube::render() const {
@@ -84,11 +93,11 @@ void Cube::render() const {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, m_texture2);
 
-    // 计算并设置 Model 矩阵
+    // 计算并设置 Model 矩阵，使用父类的变换信息
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, m_position);
-    model = glm::rotate(model, glm::radians(m_rotationAngle), m_rotationAxis);
-    model = glm::scale(model, m_size);
+    model = model * glm::mat4_cast(m_rotation);  // 使用四元数旋转
+    model = glm::scale(model, m_scale);
 
     m_shader->setMat4("uModel", model);
     
@@ -100,5 +109,6 @@ void Cube::render() const {
 
 bool Cube::collideWith(const Object& other) const {
     // 简单的AABB碰撞检测占位符
+    // 如果使用物理引擎，由物理引擎处理碰撞
     return false;
 }

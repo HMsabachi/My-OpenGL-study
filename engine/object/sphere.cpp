@@ -6,6 +6,8 @@
 Sphere::Sphere(Engine* engine, const glm::vec3& position, float radius, Shader* shader, GLuint texture)
     : Object(engine, position), m_radius(radius), m_shader(shader), m_texture(texture), m_indexCount(0)
 {
+    // 设置缩放为半径
+    setScale(glm::vec3(radius));
     initMesh();
 }
 
@@ -28,7 +30,10 @@ void Sphere::initMesh() {
 }
 
 void Sphere::update(float deltaTime) {
-    // 可以在这里添加旋转逻辑或其他更新逻辑
+    // 调用父类更新（处理物理同步）
+    Object::update(deltaTime);
+    
+    // 可以在这里添加特定于Sphere的更新逻辑
 }
 
 void Sphere::render() const {
@@ -40,9 +45,11 @@ void Sphere::render() const {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_texture);
     
-    // 计算并设置 Model 矩阵
+    // 计算并设置 Model 矩阵，使用父类的变换信息
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, m_position);
+    model = model * glm::mat4_cast(m_rotation);
+    model = glm::scale(model, m_scale);
     
     m_shader->setMat4("uModel", model);
     
@@ -53,6 +60,6 @@ void Sphere::render() const {
 }
 
 bool Sphere::collideWith(const Object& other) const {
-    // 简单的球体碰撞检测占位符
+    // 由物理引擎处理碰撞
     return false;
 }

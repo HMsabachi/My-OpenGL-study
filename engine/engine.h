@@ -5,7 +5,6 @@
 #include "camera.h"
 #include "../application/application.h"
 
-
 #include "reactphysics3d/reactphysics3d.h"
 
 class Camera;
@@ -14,6 +13,8 @@ class ShaderManager;
 class VAO;
 class Cube; // 前向声明
 class Sphere; // 前向声明
+class Plane; // 前向声明
+class Scene; // 前向声明
 
 class Engine {
 public:
@@ -22,7 +23,7 @@ public:
 
 public:
 	ShaderManager* shaderManager{nullptr};
-	
+	Scene* scene{nullptr};  // 场景管理器
 
 public:
 	bool mouseCaptured{ false };
@@ -65,16 +66,10 @@ public:
     void updateGlobalUniforms();
 
 public:
+    // 保留用于兼容性
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
     VAO* vao;
-    
-    std::vector<Cube*> cubes; // 存储Cube对象
-    std::vector<Sphere*> spheres; // 存储Sphere对象
-
-    // 物理引擎
-    // rp3d::PhysicsCommon physicsCommon;
-    // rp3d::PhysicsWorld* pWorld{nullptr};
 
 public:
 	TextureManager* textureManager{nullptr};
@@ -87,13 +82,5 @@ public:
 	static void framebufferSizeCallback(int width, int height);
 	static void keyCallback(int key, int action, int mods);
 };
-
-
-
-
-
-
-
-
 
 #endif // ENGINE_H
