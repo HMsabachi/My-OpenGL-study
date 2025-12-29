@@ -1,4 +1,4 @@
-#include "shader.h"
+﻿#include "shader.h"
 #include "../wrapper/checkError.h"
 
 #include <iostream>
@@ -137,7 +137,6 @@ void Shader::setVec3(const char* name, float x, float y, float z){ // set a 3D v
     GL_CALL(glUniform3f(location, x, y, z));
     end();
 }
-
 void Shader::setMat4(const char* name, const glm::mat4& mat) {
     GLint location = GL_CALL(glGetUniformLocation(mProgID, name));
     //std::cout << "shaderID:" << mProgID << " " << name << " location: " << location << std::endl;
@@ -152,11 +151,30 @@ void Shader::setMat4(const char* name, const float* mat) {
     GL_CALL(glUniformMatrix4fv(location, 1, GL_FALSE, mat));
     end();
 }
+void Shader::setVec4(const char* name, float x, float y, float z, float w) {
+    GLint location = GL_CALL(glGetUniformLocation(mProgID, name));
+    begin();
+    GL_CALL(glUniform4f(location, x, y, z, w));
+    end();
+}
 
+void Shader::setVec4(const char* name, const glm::vec4& value) {
+    setVec4(name, value.x, value.y, value.z, value.w);
+}
 
+void Shader::setMat2(const char* name, const glm::mat2& mat) {
+    GLint location = GL_CALL(glGetUniformLocation(mProgID, name));
+    begin();
+    GL_CALL(glUniformMatrix2fv(location, 1, GL_FALSE, glm::value_ptr(mat)));
+    end();
+}
 
-
-
+void Shader::setMat3(const char* name, const glm::mat3& mat) {
+    GLint location = GL_CALL(glGetUniformLocation(mProgID, name));
+    begin();
+    GL_CALL(glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(mat)));
+    end();
+}
 
 // set uniform functions
 

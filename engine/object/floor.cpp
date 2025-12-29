@@ -2,14 +2,16 @@
 #include "Floor.h"
 #include <vector>
 #include <memory>  // for std::shared_ptr
+#include "../engine.h"
 
 #define Ptr std::shared_ptr
 #define MPtr std::make_shared
 
-Floor::Floor(const glm::vec3& position, rp3d::PhysicsWorld* physicsWorld,
+Floor::Floor(Engine* engine,
+    const glm::vec3& position,
     const glm::vec3& size, Shader* shader)
-    : Object(position, glm::vec3(0.0f)),  // 速度为0
-    m_physicsWorld(physicsWorld),
+    : Object(engine, position, glm::vec3(0.0f)),  // 速度为0
+    m_physicsWorld(engine->pWorld),
     m_size(size),
     m_shader(shader),
     m_vao(nullptr) {
@@ -25,7 +27,7 @@ Floor::Floor(const glm::vec3& position, rp3d::PhysicsWorld* physicsWorld,
         m_rigidBody->setType(rp3d::BodyType::STATIC);
 
         rp3d::Vector3 halfExtents(size.x / 2.0f, size.y / 2.0f, size.z / 2.0f);
-        auto* boxShape = m_physicsWorld->createBoxShape(halfExtents);  // 注意：需使用PhysicsCommon创建shape
+        auto* boxShape = m_engine->physicsCommon.createBoxShape(halfExtents);  // 注意：需使用PhysicsCommon创建shape
         m_rigidBody->addCollider(boxShape, rp3d::Transform::identity());
     }
 }

@@ -3,9 +3,9 @@
 #define FLOOR_H
 
 #include "Object.h"  // 假设Object.h已定义
-#include "../glFrameWork/core.h"
-#include "../glFrameWork/buffers.h"
-#include "../glFrameWork/shader.h"
+#include "../../glFrameWork/core.h"
+#include "../../glFrameWork/buffers.h"
+#include "../../glFrameWork/shader.h"
 #include "reactphysics3d/reactphysics3d.h"
 
 /**
@@ -13,6 +13,9 @@
  * 该类代表一个静态地板物体，支持物理碰撞和OpenGL渲染。
  * 使用reactphysics3d创建静态刚体，使用VAO渲染平面网格。
  */
+
+class Engine;  // 前向声明
+
 class Floor : public Object {
 public:
     /**
@@ -22,8 +25,8 @@ public:
      * @param size 地板尺寸 (glm::vec3, x:宽度, y:厚度, z:深度，默认100x1x100)
      * @param shader 着色器指针 (Shader*)
      */
-    Floor(const glm::vec3& position = glm::vec3(0.0f, 0.0f, 0.0f),
-        rp3d::PhysicsWorld* physicsWorld = nullptr,
+    Floor(Engine* engine,
+        const glm::vec3& position = glm::vec3(0.0f, 0.0f, 0.0f),
         const glm::vec3& size = glm::vec3(100.0f, 1.0f, 100.0f),
         Shader* shader = nullptr);
 

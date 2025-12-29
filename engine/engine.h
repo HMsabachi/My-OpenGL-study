@@ -1,16 +1,18 @@
 ﻿#ifndef ENGINE_H
 #define ENGINE_H
 
-#include "../glFrameWork/core.h"
-#include "../glFrameWork/shader.h"
-#include "../glFrameWork/texture.h"
+#include "../glFrameWork/glFrameWork.h"
 #include "camera.h"
 #include "../application/application.h"
-#include "../glFrameWork/buffers.h"
-
-#include "reactphysics3d/reactphysics3d.h" // 加载第三方物理引擎
 
 
+#include "reactphysics3d/reactphysics3d.h"
+
+class Camera;
+class TextureManager;
+class ShaderManager;
+class VAO;
+class Cube; // 前向声明
 
 class Engine {
 public:
@@ -18,10 +20,11 @@ public:
 	rp3d::PhysicsWorld* pWorld{nullptr};
 
 public:
-	bool mouseCaptured{ false };
+	ShaderManager* shaderManager{nullptr};
+	
 
 public:
-	void update();
+	bool mouseCaptured{ false };
 
 public: // 相机控制
 	struct CameraData {
@@ -51,20 +54,32 @@ public:
 	*/
 	int init();
 
-public:
-	std::vector<GLfloat> vertices;
-	std::vector<GLuint> indices;
-	VAO* vao{nullptr};
-	GLuint texture, texture2;
-	void setupDemoData();
-
-	void render();
+    void update();
+    void render();
+    // void setupDemoData(); // 移除重复声明
 
 public:
-	Shader* shader{nullptr};
+    std::vector<float> vertices;
+    std::vector<unsigned int> indices;
+    VAO* vao;
+    
+    std::vector<Cube*> cubes; // 存储Cube对象
+
+    // 物理引擎
+    // rp3d::PhysicsCommon physicsCommon;
+    // rp3d::PhysicsWorld* pWorld{nullptr};
+
+public:
 	TextureManager* textureManager{nullptr};
 	Camera* camera{nullptr};
+    
+    GLuint texture{0};
+    GLuint texture2{0};
 
+public:
+	void setupDemoData();
+	void render(float deltaTime);
+	
 public:
 	static void framebufferSizeCallback(int width, int height);
 	static void keyCallback(int key, int action, int mods);

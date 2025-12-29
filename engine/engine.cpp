@@ -10,17 +10,16 @@
 
 #include "../wrapper/widgets.h"
 
-#include "../glFrameWork/core.h"
+#include "../glFrameWork/glFrameWork.h"
 #include "../wrapper/checkError.h"
-#include "../glFrameWork/shader.h"
-#include "../glFrameWork/buffers.h"
-#include "../glFrameWork/texture.h"
+
 
 #include "camera.h"
 
 #include "../application/stb_image.h" // 加载图片
 
 #include "reactphysics3d/reactphysics3d.h" // 加载第三方物理引擎
+#include "object/cube.h" // 引入Cube类
 
 
 #define Ptr std::shared_ptr
@@ -107,13 +106,20 @@ Engine::Engine() {
 }
 Engine::~Engine() {
 	delete textureManager;
-	delete shader;
 	delete camera;
 	//delete myApp;
     delete vao;
+    delete shaderManager;
 
     glDeleteTextures(1, &texture);
     glDeleteTextures(1, &texture2);
+    
+    // 清理Cube对象
+    for (auto* cube : cubes) {
+        delete cube;
+    }
+    cubes.clear();
+
     myApp->destroy();
 }
 
@@ -121,61 +127,7 @@ Engine::~Engine() {
 
 void Engine::setupDemoData()
 {
-    this->vertices = {
-    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-     0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-    -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-
-    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-     0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-     0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-    -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
-    };
-    this->indices = {
-        0, 1, 3, // 第一个三角形
-        1, 2, 3  // 第二个三角形
-    };
-    auto Vbo = MPtr<Buffer<float>>(vertices, GL_ARRAY_BUFFER, GL_STATIC_DRAW);
-    auto Ebo = MPtr<Buffer<unsigned int>>(indices, GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW);
-    //widgets::Ball ball;
-    //auto Vbo = MPtr<Buffer<float>>(widgets::transformVertices(ball.vertices), GL_ARRAY_BUFFER, GL_STATIC_DRAW);
-    //auto Ebo = MPtr<Buffer<unsigned int>>(ball.indices, GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW);
-
-    vao = new VAO();
-    vao->addVBO(*Vbo, "3f 2f", GL_FALSE);
+    auto* shader = shaderManager->getShader("basic");
 
     shader->setInt("texture1", 0);
     shader->setInt("texture2", 1);
@@ -188,11 +140,28 @@ void Engine::setupDemoData()
 	
     texture = textureManager->loadTexture("assets/textures/container.jpg", "container");
     texture2 = textureManager->loadTexture("assets/textures/awesomeface.png", "awesomeface");
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    
+    // 创建Cube对象
+    glm::vec3 cubePositions[] = {
+        glm::vec3(0.0f,  0.0f,  0.0f),
+        glm::vec3(2.0f,  5.0f, -15.0f),
+        glm::vec3(-1.5f, -2.2f, -2.5f),
+        glm::vec3(-3.8f, -2.0f, -12.3f),
+        glm::vec3(2.4f, -0.4f, -3.5f),
+        glm::vec3(-1.7f,  3.0f, -7.5f),
+        glm::vec3(1.3f, -2.0f, -2.5f),
+        glm::vec3(1.5f,  2.0f, -2.5f),
+        glm::vec3(1.5f,  0.2f, -1.5f),
+        glm::vec3(-1.3f,  1.0f, -1.5f)
+    };
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, texture2);
+    for (unsigned int i = 0; i < 10; i++)
+    {
+        Cube* cube = new Cube(this, cubePositions[i], glm::vec3(1.0f), shader, texture, texture2);
+        float angle = 20.0f * i;
+        cube->setRotation(angle, glm::vec3(1.0f, 0.3f, 0.5f));
+        cubes.push_back(cube);
+    }
 }
 
 void Engine::render()
@@ -214,29 +183,13 @@ void Engine::render()
     while (myApp->update()) {
 		this->update();
         GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+        auto* shader = shaderManager->getShader("basic");
         shader->setMat4("uView", camera->getViewMatrix());
-        shader->begin();
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, texture2);
-
-        //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);// 渲染线框模式
-
-        for (unsigned int i = 0; i < 10; i++)
-        {
-            glm::mat4 model{ 1.0f };
-            model = glm::translate(model, cubePositions[i]);
-            float angle = 20.0f * i;
-            model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-            shader->setMat4("uModel", model);
-            shader->begin();
-            vao->draw();
+        
+        // 渲染所有Cube对象
+        for (auto* cube : cubes) {
+            cube->render();
         }
-        //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
-        shader->end();
-
     }
 }
 
@@ -246,7 +199,7 @@ void Engine::framebufferSizeCallback(int width, int height)
 	Engine* self = myApp->engine;
 	GL_CALL(glViewport(0, 0, width, height));
 	self->camera->setAspect(static_cast<float>(width) / static_cast<float>(height));
-	self->shader->setMat4("uProjection", self->camera->getProjectionMatrix());
+	self->shaderManager->getShader("basic")->setMat4("uProjection", self->camera->getProjectionMatrix());
 }
 void Engine::keyCallback(int key, int action, int mods)
 {
@@ -268,9 +221,10 @@ int Engine::init() {
 	myApp->engine = this;
     this->_initOpenGL();
     textureManager = new TextureManager();
+    shaderManager = new ShaderManager();
     camera = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
     camera->enableFPS(true);
-    shader = new Shader("assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
+    shaderManager->loadShader("basic", "assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
 
 	myApp->setKeyboardCallback(keyCallback);
 

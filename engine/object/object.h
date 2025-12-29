@@ -1,73 +1,77 @@
-// Object.h
+ï»¿// Object.h
 #ifndef OBJECT_H
 #define OBJECT_H
 
-#include <glm/glm.hpp>  // ÓÃÓÚÏòÁ¿ºÍ¾ØÕó²Ù×÷£¬¼ÙÉèÊ¹ÓÃGLM¿â
-#include <reactphysics3d/reactphysics3d.h>  // ReactPhysics3DÎïÀíÒıÇæ
+#include <glm/glm.hpp>  // ç”¨äºå‘é‡å’ŒçŸ©é˜µæ“ä½œï¼Œå‡è®¾ä½¿ç”¨GLMåº“
+#include <reactphysics3d/reactphysics3d.h>  // ReactPhysics3Dç‰©ç†å¼•æ“
 
 /**
- * ÓÎÏ·ÎïÌå»ùÀà£¬Ìá¹©»ù±¾µÄÎ»ÖÃ¡¢ËÙ¶È¡¢¸üĞÂºÍäÖÈ¾¹¦ÄÜ¡£
- * ×ÓÀà¿ÉÒÔÀ©Õ¹ÒÔÊµÏÖÌØ¶¨ĞĞÎª£¬ÈçÍæ¼Ò¡¢µĞÈËµÈ¡£
+ * æ¸¸æˆç‰©ä½“åŸºç±»ï¼Œæä¾›åŸºæœ¬çš„ä½ç½®ã€é€Ÿåº¦ã€æ›´æ–°å’Œæ¸²æŸ“åŠŸèƒ½ã€‚
+ * å­ç±»å¯ä»¥æ‰©å±•ä»¥å®ç°ç‰¹å®šè¡Œä¸ºï¼Œå¦‚ç©å®¶ã€æ•Œäººç­‰ã€‚
  */
+
+class Engine;
+
 class Object {
 public:
     /**
-     * ¹¹Ôìº¯Êı£¬³õÊ¼»¯Î»ÖÃºÍËÙ¶È¡£
-     * @param position ³õÊ¼Î»ÖÃ (glm::vec3)
-     * @param velocity ³õÊ¼ËÙ¶È (glm::vec3)
+     * æ„é€ å‡½æ•°ï¼Œåˆå§‹åŒ–ä½ç½®å’Œé€Ÿåº¦ã€‚
+     * @param position åˆå§‹ä½ç½® (glm::vec3)
+     * @param velocity åˆå§‹é€Ÿåº¦ (glm::vec3)
      */
-    Object(const glm::vec3& position = glm::vec3(0.0f), const glm::vec3& velocity = glm::vec3(0.0f));
+    Object(Engine* engine, const glm::vec3& position = glm::vec3(0.0f), const glm::vec3& velocity = glm::vec3(0.0f));
 
     /**
-     * Îö¹¹º¯Êı¡£
+     * ææ„å‡½æ•°ã€‚
      */
     virtual ~Object();
 
     /**
-     * ¸üĞÂÎïÌå×´Ì¬£¬Ä¬ÈÏ»ùÓÚËÙ¶ÈÒÆ¶¯¡£
-     * @param deltaTime ×ÔÉÏ´Î¸üĞÂÒÔÀ´¾­¹ıµÄÊ±¼ä (float)
+     * æ›´æ–°ç‰©ä½“çŠ¶æ€ï¼Œé»˜è®¤åŸºäºé€Ÿåº¦ç§»åŠ¨ã€‚
+     * @param deltaTime è‡ªä¸Šæ¬¡æ›´æ–°ä»¥æ¥ç»è¿‡çš„æ—¶é—´ (float)
      */
     virtual void update(float deltaTime);
 
     /**
-     * ÔÚÆÁÄ»ÉÏäÖÈ¾ÎïÌå¡£´Ë·½·¨ÎªÕ¼Î»·û£¬×ÓÀàĞèÖØĞ´ÒÔ»æÖÆÊµ¼ÊÄ£ĞÍ»ò¾«Áé¡£
+     * åœ¨å±å¹•ä¸Šæ¸²æŸ“ç‰©ä½“ã€‚æ­¤æ–¹æ³•ä¸ºå ä½ç¬¦ï¼Œå­ç±»éœ€é‡å†™ä»¥ç»˜åˆ¶å®é™…æ¨¡å‹æˆ–ç²¾çµã€‚
      */
     virtual void render() const = 0;
 
     /**
-     * ¼ì²éÓëÁíÒ»¸öÎïÌåµÄÅö×²¡£´Ë·½·¨ÎªÕ¼Î»·û£¬×ÓÀàĞè¸ù¾İĞÎ×´ÊµÏÖ£¨ÈçAABB¡¢ÇòÌå£©¡£
-     * @param other ÁíÒ»¸öObjectÊµÀı
-     * @return Èç¹ûÅö×²Ôò·µ»Øtrue£¬·ñÔòfalse
+     * æ£€æŸ¥ä¸å¦ä¸€ä¸ªç‰©ä½“çš„ç¢°æ’ã€‚æ­¤æ–¹æ³•ä¸ºå ä½ç¬¦ï¼Œå­ç±»éœ€æ ¹æ®å½¢çŠ¶å®ç°ï¼ˆå¦‚AABBã€çƒä½“ï¼‰ã€‚
+     * @param other å¦ä¸€ä¸ªObjectå®ä¾‹
+     * @return å¦‚æœç¢°æ’åˆ™è¿”å›trueï¼Œå¦åˆ™false
      */
     virtual bool collideWith(const Object& other) const = 0;
 
     /**
-     * ±ê¼ÇÎïÌåÎª·Ç»îÔ¾×´Ì¬£¬ÒÔ±ã´ÓÓÎÏ·Ñ­»·ÖĞÒÆ³ı¡£
+     * æ ‡è®°ç‰©ä½“ä¸ºéæ´»è·ƒçŠ¶æ€ï¼Œä»¥ä¾¿ä»æ¸¸æˆå¾ªç¯ä¸­ç§»é™¤ã€‚
      */
     void destroy();
 
-    // »ñÈ¡Î»ÖÃ
+    // è·å–ä½ç½®
     const glm::vec3& getPosition() const { return m_position; }
 
-    // ÉèÖÃÎ»ÖÃ
+    // è®¾ç½®ä½ç½®
     void setPosition(const glm::vec3& position) { m_position = position; }
 
-    // »ñÈ¡ËÙ¶È
+    // è·å–é€Ÿåº¦
     const glm::vec3& getVelocity() const { return m_velocity; }
 
-    // ÉèÖÃËÙ¶È
+    // è®¾ç½®é€Ÿåº¦
     void setVelocity(const glm::vec3& velocity) { m_velocity = velocity; }
 
-    // ¼ì²éÊÇ·ñ»îÔ¾
+    // æ£€æŸ¥æ˜¯å¦æ´»è·ƒ
     bool isActive() const { return m_isActive; }
 
 protected:
-    glm::vec3 m_position;  // Î»ÖÃ
-    glm::vec3 m_velocity;  // ËÙ¶È
-    bool m_isActive;       // »îÔ¾±êÖ¾
+    Engine* m_engine;     // æ¸¸æˆå¼•æ“å®ä¾‹
+    glm::vec3 m_position;  // ä½ç½®
+    glm::vec3 m_velocity;  // é€Ÿåº¦
+    bool m_isActive;       // æ´»è·ƒæ ‡å¿—
 
-    // ReactPhysics3DÏà¹Ø£º¿ÉÑ¡µÄ¸ÕÌåÖ¸Õë£¬Èç¹ûĞèÒªÎïÀíÄ£Äâ
-    rp3d::RigidBody* m_rigidBody;  // ÎïÀíÒıÇæ¸ÕÌå£¨Èç¹ûÊ¹ÓÃ£©
+    // ReactPhysics3Dç›¸å…³ï¼šå¯é€‰çš„åˆšä½“æŒ‡é’ˆï¼Œå¦‚æœéœ€è¦ç‰©ç†æ¨¡æ‹Ÿ
+    rp3d::RigidBody* m_rigidBody;  // ç‰©ç†å¼•æ“åˆšä½“ï¼ˆå¦‚æœä½¿ç”¨ï¼‰
 };
 
 #endif // OBJECT_H

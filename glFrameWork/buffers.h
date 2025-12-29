@@ -51,6 +51,23 @@ public:
     }
 
     /**
+     * @brief 构造函数，通过C风格数组指针创建缓冲。
+     * @param data 数据指针。
+     * @param count 元素数量。
+     * @param target 缓冲目标，如GL_ARRAY_BUFFER或GL_ELEMENT_ARRAY_BUFFER。
+     * @param usage 数据使用模式，默认GL_STATIC_DRAW。
+     */
+    Buffer(const T* data, size_t count, GLenum target, GLenum usage = GL_STATIC_DRAW)
+        : m_target(target), m_usage(usage), m_type(getGLType<T>()) {
+        glGenBuffers(1, &m_id);
+        bind();
+        glBufferData(m_target, count * sizeof(T), data, m_usage);
+        m_size = count * sizeof(T);
+        m_count = count;
+        unbind();
+    }
+
+    /**
      * @brief 析构函数，释放缓冲资源。
      */
     ~Buffer() {
@@ -85,7 +102,7 @@ public:
             m_count = m_size / sizeof(T);
         }
     }
-
+    
     /**
      * @brief 获取数据大小（字节）。
      */

@@ -1,16 +1,16 @@
-# ÉèÖÃ CMake ×îµÍ°æ±¾
+ï»¿# è®¾ç½® CMake æœ€ä½ç‰ˆæœ¬
 cmake_minimum_required(VERSION 3.12)
 
-# ÉèÖÃÏîÄ¿Ãû³Æ
+# è®¾ç½®é¡¹ç›®åç§°
 PROJECT(learnOpenGL)
 
-# ÉèÖÃÏîÄ¿ÓïÑÔ
+# è®¾ç½®é¡¹ç›®è¯­è¨€
 SET(CMAKE_CXX_STANDARD 17)
 
-# ÉèÖÃÈ«¾Ö±àÒëÑ¡Ïî
+# è®¾ç½®å…¨å±€ç¼–è¯‘é€‰é¡¹
 add_definitions(-DDEBUG)
 
-# ÉèÖÃµÚÈı·½¿â
+# è®¾ç½®ç¬¬ä¸‰æ–¹åº“
 #if(WIN32)
 #  list(APPEND CMAKE_PREFIX_PATH "C:\\Program Files (x86)\\ReactPhysics3D")
 #elseif(APPLE)
@@ -18,11 +18,11 @@ add_definitions(-DDEBUG)
 #endif()
 #find_package(ReactPhysics3D REQUIRED)
 
-# ¿½±´×ÊÔ´ÎÄ¼ş
+# æ‹·è´èµ„æºæ–‡ä»¶
 file(GLOB ASSETS "./assets")
 file(COPY ${ASSETS} DESTINATION ${CMAKE_BINARY_DIR})
 
-# ÉèÖÃ°üº¬Ä¿Â¼ºÍÁ´½ÓÄ¿Â¼
+# è®¾ç½®åŒ…å«ç›®å½•å’Œé“¾æ¥ç›®å½•
 include_directories( SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/thirdParty/include )
 link_directories( SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/thirdParty/lib )
 add_subdirectory(wrapper)
@@ -30,10 +30,10 @@ add_subdirectory(application)
 add_subdirectory(glFrameWork)
 add_subdirectory(engine)
 
-# ²éÕÒµ±Ç°Ä¿Â¼ÏÂµÄËùÓĞÔ´ÎÄ¼ş
+# æŸ¥æ‰¾å½“å‰ç›®å½•ä¸‹çš„æ‰€æœ‰æºæ–‡ä»¶
 aux_source_directory(. SRCS)
 
-# Ìí¼Ó¿ÉÖ´ĞĞÎÄ¼ş
+# æ·»åŠ å¯æ‰§è¡Œæ–‡ä»¶
 add_executable(glStudy ${SRCS})
 
 target_link_libraries(glStudy glfw3 wrapper app fw engine reactphysics3d)

@@ -1,36 +1,37 @@
-// Object.cpp
+ï»¿// Object.cpp
 #include "Object.h"
+#include "../engine.h"
 
 /**
- * ¹¹Ôìº¯ÊıÊµÏÖ¡£
+ * æ„é€ å‡½æ•°å®ç°ã€‚
  */
-Object::Object(const glm::vec3& position, const glm::vec3& velocity)
-    : m_position(position), m_velocity(velocity), m_isActive(true), m_rigidBody(nullptr) {
-    // ÕâÀï¿ÉÒÔ³õÊ¼»¯ReactPhysics3DµÄ¸ÕÌå£¬Èç¹ûĞèÒª
-    // ÀıÈç£ºm_rigidBody = physicsWorld->createRigidBody(transform);
+Object::Object(Engine* engine, const glm::vec3& position, const glm::vec3& velocity)
+    : m_engine(engine) ,m_position(position), m_velocity(velocity), m_isActive(true), m_rigidBody(nullptr) {
+    // è¿™é‡Œå¯ä»¥åˆå§‹åŒ–ReactPhysics3Dçš„åˆšä½“ï¼Œå¦‚æœéœ€è¦
+    // ä¾‹å¦‚ï¼šm_rigidBody = physicsWorld->createRigidBody(transform);
 }
 
 /**
- * Îö¹¹º¯ÊıÊµÏÖ¡£
+ * ææ„å‡½æ•°å®ç°ã€‚
  */
 Object::~Object() {
-    // ÇåÀíÎïÀíÒıÇæ×ÊÔ´£¬Èç¹ûÊÊÓÃ
-    // ÀıÈç£ºif (m_rigidBody) physicsWorld->destroyRigidBody(m_rigidBody);
+    // æ¸…ç†ç‰©ç†å¼•æ“èµ„æºï¼Œå¦‚æœé€‚ç”¨
+    // ä¾‹å¦‚ï¼šif (m_rigidBody) physicsWorld->destroyRigidBody(m_rigidBody);
 }
 
 /**
- * ¸üĞÂÊµÏÖ¡£
+ * æ›´æ–°å®ç°ã€‚
  */
 void Object::update(float deltaTime) {
     if (m_isActive) {
         m_position += m_velocity * deltaTime;
-        // Èç¹ûÊ¹ÓÃReactPhysics3D£¬¿ÉÒÔÔÚÕâÀïÍ¬²½ÎïÀíÄ£Äâ
-        // ÀıÈç£ºm_position = m_rigidBody->getTransform().getPosition();
+        // å¦‚æœä½¿ç”¨ReactPhysics3Dï¼Œå¯ä»¥åœ¨è¿™é‡ŒåŒæ­¥ç‰©ç†æ¨¡æ‹Ÿ
+        // ä¾‹å¦‚ï¼šm_position = m_rigidBody->getTransform().getPosition();
     }
 }
 
 /**
- * Ïú»ÙÊµÏÖ¡£
+ * é”€æ¯å®ç°ã€‚
  */
 void Object::destroy() {
     m_isActive = false;
