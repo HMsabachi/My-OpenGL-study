@@ -13,6 +13,7 @@ class TextureManager;
 class ShaderManager;
 class VAO;
 class Cube; // 前向声明
+class Sphere; // 前向声明
 
 class Engine {
 public:
@@ -56,7 +57,12 @@ public:
 
     void update();
     void render();
-    // void setupDemoData(); // 移除重复声明
+    void setupDemoData();
+    
+    /**
+     * @brief 更新所有 Shader 的全局 Uniform（View、Projection 矩阵）
+     */
+    void updateGlobalUniforms();
 
 public:
     std::vector<float> vertices;
@@ -64,6 +70,7 @@ public:
     VAO* vao;
     
     std::vector<Cube*> cubes; // 存储Cube对象
+    std::vector<Sphere*> spheres; // 存储Sphere对象
 
     // 物理引擎
     // rp3d::PhysicsCommon physicsCommon;
@@ -76,10 +83,6 @@ public:
     GLuint texture{0};
     GLuint texture2{0};
 
-public:
-	void setupDemoData();
-	void render(float deltaTime);
-	
 public:
 	static void framebufferSizeCallback(int width, int height);
 	static void keyCallback(int key, int action, int mods);

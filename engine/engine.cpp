@@ -20,7 +20,7 @@
 
 #include "reactphysics3d/reactphysics3d.h" // 加载第三方物理引擎
 #include "object/cube.h" // 引入Cube类
-
+#include "object/sphere.h" // 引入Sphere类
 
 #define Ptr std::shared_ptr
 #define MPtr std::make_shared
@@ -120,6 +120,12 @@ Engine::~Engine() {
     }
     cubes.clear();
 
+    // 清理Sphere对象
+    for (auto* sphere : spheres) {
+        delete sphere;
+    }
+    spheres.clear();
+
     myApp->destroy();
 }
 
@@ -127,21 +133,30 @@ Engine::~Engine() {
 
 void Engine::setupDemoData()
 {
-    auto* shader = shaderManager->getShader("basic");
-
-    shader->setInt("texture1", 0);
-    shader->setInt("texture2", 1);
-
-    camera->setFOV(60.0f);
-
-    shader->setMat4("uView", camera->getViewMatrix());
-    shader->setMat4("uProjection", camera->getProjectionMatrix());
-
-	
+    // 加载纹理
     texture = textureManager->loadTexture("assets/textures/container.jpg", "container");
     texture2 = textureManager->loadTexture("assets/textures/awesomeface.png", "awesomeface");
     
-    // 创建Cube对象
+    // 配置 basic shader
+    auto* basicShader = shaderManager->getShader("basic");
+    basicShader->begin();
+    basicShader->setInt("texture1", 0);  // 纹理单元 0
+    basicShader->setInt("texture2", 1);  // 纹理单元 1
+    basicShader->end();
+    
+    // 配置 sphere shader
+    auto* sphereShader = shaderManager->getShader("sphere");
+    sphereShader->begin();
+    sphereShader->setInt("texture1", 0);  // 纹理单元 0
+    sphereShader->end();
+
+    // 设置相机
+    camera->setFOV(60.0f);
+    
+    // 初始化全局 Uniform
+    updateGlobalUniforms();
+    
+    // 创建 Cube 对象
     glm::vec3 cubePositions[] = {
         glm::vec3(0.0f,  0.0f,  0.0f),
         glm::vec3(2.0f,  5.0f, -15.0f),
@@ -157,38 +172,54 @@ void Engine::setupDemoData()
 
     for (unsigned int i = 0; i < 10; i++)
     {
-        Cube* cube = new Cube(this, cubePositions[i], glm::vec3(1.0f), shader, texture, texture2);
+        Cube* cube = new Cube(this, cubePositions[i], glm::vec3(1.0f), basicShader, texture, texture2);
         float angle = 20.0f * i;
         cube->setRotation(angle, glm::vec3(1.0f, 0.3f, 0.5f));
         cubes.push_back(cube);
     }
+
+    // 创建 Sphere 对象
+    Sphere* sphere = new Sphere(this, glm::vec3(3.0f, 0.0f, 0.0f), 1.0f, sphereShader, texture2);
+    spheres.push_back(sphere);
+}
+
+void Engine::updateGlobalUniforms()
+{
+    glm::mat4 viewMatrix = camera->getViewMatrix();
+    glm::mat4 projectionMatrix = camera->getProjectionMatrix();
+    
+    // 更新所有 Shader 的 View 和 Projection 矩阵
+    auto* basicShader = shaderManager->getShader("basic");
+    basicShader->begin();
+    basicShader->setMat4("uView", viewMatrix);
+    basicShader->setMat4("uProjection", projectionMatrix);
+    basicShader->end();
+    
+    auto* sphereShader = shaderManager->getShader("sphere");
+    sphereShader->begin();
+    sphereShader->setMat4("uView", viewMatrix);
+    sphereShader->setMat4("uProjection", projectionMatrix);
+    sphereShader->end();
 }
 
 void Engine::render()
 {
-    glm::vec3 cubePositions[] = {
-        glm::vec3(0.0f,  0.0f,  0.0f),
-        glm::vec3(2.0f,  5.0f, -15.0f),
-        glm::vec3(-1.5f, -2.2f, -2.5f),
-        glm::vec3(-3.8f, -2.0f, -12.3f),
-        glm::vec3(2.4f, -0.4f, -3.5f),
-        glm::vec3(-1.7f,  3.0f, -7.5f),
-        glm::vec3(1.3f, -2.0f, -2.5f),
-        glm::vec3(1.5f,  2.0f, -2.5f),
-        glm::vec3(1.5f,  0.2f, -1.5f),
-        glm::vec3(-1.3f,  1.0f, -1.5f)
-    };
-
-
     while (myApp->update()) {
 		this->update();
-        GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
-        auto* shader = shaderManager->getShader("basic");
-        shader->setMat4("uView", camera->getViewMatrix());
         
-        // 渲染所有Cube对象
+        // 每帧更新全局 Uniform
+        updateGlobalUniforms();
+        
+        GL_CALL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
+        
+        // 渲染所有 Cube 对象
         for (auto* cube : cubes) {
             cube->render();
+        }
+
+        // 渲染所有 Sphere 对象
+        for (auto* sphere : spheres) {
+            sphere->render();
         }
     }
 }
@@ -199,7 +230,9 @@ void Engine::framebufferSizeCallback(int width, int height)
 	Engine* self = myApp->engine;
 	GL_CALL(glViewport(0, 0, width, height));
 	self->camera->setAspect(static_cast<float>(width) / static_cast<float>(height));
-	self->shaderManager->getShader("basic")->setMat4("uProjection", self->camera->getProjectionMatrix());
+	
+	// 更新所有 Shader 的 Projection 矩阵
+	self->updateGlobalUniforms();
 }
 void Engine::keyCallback(int key, int action, int mods)
 {
@@ -225,6 +258,7 @@ int Engine::init() {
     camera = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
     camera->enableFPS(true);
     shaderManager->loadShader("basic", "assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
+    shaderManager->loadShader("sphere", "assets/shaders/sphere_vertex.glsl", "assets/shaders/sphere_fragment.glsl");
 
 	myApp->setKeyboardCallback(keyCallback);
 

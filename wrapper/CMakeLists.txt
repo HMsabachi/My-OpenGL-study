@@ -1,5 +1,5 @@
-# �ݹ�����ļ��������е�cpp
-file(GLOB_RECURSE WRAPPER ./ *.cpp)
+﻿# 递归遍历文件夹下所有的cpp
+file(GLOB_RECURSE WRAPPER ./*.cpp)
 
-# ���뾲̬���ӿ�
+# 编译静态链接库
 add_library(wrapper ${WRAPPER})

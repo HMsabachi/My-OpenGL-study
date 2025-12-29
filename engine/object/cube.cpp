@@ -77,20 +77,22 @@ void Cube::render() const {
 
     m_shader->begin();
     
+    // 绑定纹理
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_texture1);
     
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, m_texture2);
 
+    // 计算并设置 Model 矩阵
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, m_position);
     model = glm::rotate(model, glm::radians(m_rotationAngle), m_rotationAxis);
-    // 如果需要缩放，可以在这里添加
-    // model = glm::scale(model, m_size); 
+    model = glm::scale(model, m_size);
 
     m_shader->setMat4("uModel", model);
-    m_shader->begin();
+    
+    // 绘制
     m_vao->draw();
     
     m_shader->end();

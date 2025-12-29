@@ -74,6 +74,7 @@ private:
 
 private:
 	GLuint mProgID{ 0 };
+    bool m_isBound{ false };  // 跟踪 Shader 是否已激活
 
 public:
     /**

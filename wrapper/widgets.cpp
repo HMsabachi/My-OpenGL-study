@@ -1,83 +1,96 @@
-#include "widgets.h"
+ï»¿#include "widgets.h"
 
 #include <vector>
 #include <cmath>
-#include <glm/glm.hpp>  // Èç¹ûÄãÊ¹ÓÃglm¿â£¨ÍÆ¼ö£©£¬·ñÔò¿ÉÒÔÓÃfloat[3]Ìæ»»vec3
+#include <glm/glm.hpp>  
+#include <glm/gtc/constants.hpp>
 
+namespace widgets {
 
+    // Force recompile comment
+    SphereData createSphere(float radius, int sectors, int stacks) {
+        SphereData data;
+        float x, y, z, xy;                              // vertex position
+        float nx, ny, nz, lengthInv = 1.0f / radius;    // vertex normal
+        float s, t;                                     // vertex texCoord
 
+        float sectorStep = 2 * glm::pi<float>() / sectors;
+        float stackStep = glm::pi<float>() / stacks;
+        float sectorAngle, stackAngle;
 
-// Éú³ÉÇòÌå¶¥µãÊý¾Ý
-// ²ÎÊý£º
-//   radius: ÇòÌå°ë¾¶
-//   sectors: ¾­¶È·Ö¶ÎÊý£¨longitude£¬ÍÆ¼ö >= 12£©
-//   stacks: Î³¶È·Ö¶ÎÊý£¨latitude£¬ÍÆ¼ö >= 8£©
-// ·µ»Ø£º½»´íµÄ¶¥µãÊý¾Ý (position xyz + normal xyz + texcoord st)£¬Ã¿¸ö¶¥µã8¸öfloat
-//         ¿ÉÖ±½ÓÓÃÓÚglVertexAttribPointer
-std::vector<float> widgets::generateSphereVertices(float radius, int sectors, int stacks) {
-    std::vector<float> vertices;
+        for (int i = 0; i <= stacks; ++i) {
+            stackAngle = glm::pi<float>() / 2 - i * stackStep;        // starting from pi/2 to -pi/2
+            xy = radius * cosf(stackAngle);             // r * cos(u)
+            z = radius * sinf(stackAngle);              // r * sin(u)
 
-    const float PI = 3.14159265359f;
-    const float PI_2 = PI * 2.0f;
+            // add (sectorCount+1) vertices per stack
+            // the first and last vertices have same position and normal, but different tex coords
+            for (int j = 0; j <= sectors; ++j) {
+                sectorAngle = j * sectorStep;           // starting from 0 to 2pi
 
-    // Ñ­»·Õ»£¨´Ó±±¼«µ½ÄÏ¼«£©
-    for (int i = 0; i <= stacks; ++i) {
-        float stackAngle = PI / 2.0f - i * PI / stacks;  // ´Ó +90¡ã µ½ -90¡ã
-        float xy = radius * std::cos(stackAngle);       // r * cos(phi)
-        float y = radius * std::sin(stackAngle);        // r * sin(phi)
+                // vertex position (x, y, z)
+                x = xy * cosf(sectorAngle);             // r * cos(u) * cos(v)
+                y = xy * sinf(sectorAngle);             // r * cos(u) * sin(v)
+                
+                // vertex tex coord (s, t) range between [0, 1]
+                s = (float)j / sectors;
+                t = (float)i / stacks;
 
-        // Ñ­»·ÉÈÇø£¨¾­¶È£©
-        for (int j = 0; j <= sectors; ++j) {
-            float sectorAngle = j * PI_2 / sectors;     // ´Ó 0 µ½ 360¡ã
+                // é‡æ–°è®¡ç®—ä»¥åŒ¹é… Y-up
+                float y_pos = radius * sinf(stackAngle);
+                float xy_pos = radius * cosf(stackAngle);
+                float x_pos = xy_pos * cosf(sectorAngle);
+                float z_pos = xy_pos * sinf(sectorAngle);
 
-            float x = xy * std::cos(sectorAngle);       // r * cos(phi) * cos(theta)
-            float z = xy * std::sin(sectorAngle);       // r * cos(phi) * sin(theta)
+                // normalized vertex normal (nx, ny, nz)
+                nx = x_pos * lengthInv;
+                ny = y_pos * lengthInv;
+                nz = z_pos * lengthInv;
 
-            // Î»ÖÃ
-            vertices.push_back(x);
-            vertices.push_back(y);
-            vertices.push_back(z);
+                // Position (3 floats)
+                data.vertices.push_back(x_pos);
+                data.vertices.push_back(y_pos);
+                data.vertices.push_back(z_pos);
 
-            // ·¨Ïß£¨µ¥Î»ÇòÌåÉÏÎ»ÖÃ¼´Îª·¨Ïß£©
-            vertices.push_back(x / radius);
-            vertices.push_back(y / radius);
-            vertices.push_back(z / radius);
+                // Normal (3 floats)
+                data.vertices.push_back(nx);
+                data.vertices.push_back(ny);
+                data.vertices.push_back(nz);
 
-            // ÎÆÀí×ø±ê (s, t)
-            float s = static_cast<float>(j) / sectors;
-            float t = static_cast<float>(i) / stacks;
-            vertices.push_back(s);
-            vertices.push_back(t);
-        }
-    }
-
-    return vertices;
-}
-
-// Éú³ÉË÷Òý£¨ÓÃÓÚGL_ELEMENT_ARRAY_BUFFER£¬»æÖÆÈý½ÇÐÎ£©
-std::vector<unsigned int> widgets::generateSphereIndices(int sectors, int stacks) {
-    std::vector<unsigned int> indices;
-
-    for (int i = 0; i < stacks; ++i) {
-        unsigned int k1 = i * (sectors + 1);
-        unsigned int k2 = k1 + sectors + 1;
-
-        for (int j = 0; j < sectors; ++j, ++k1, ++k2) {
-            // ÉÏ°ë²¿·Ö£¨³ý±±¼«£©
-            if (i != 0) {
-                indices.push_back(k1);
-                indices.push_back(k2);
-                indices.push_back(k1 + 1);
-            }
-
-            // ÏÂ°ë²¿·Ö£¨³ýÄÏ¼«£©
-            if (i != (stacks - 1)) {
-                indices.push_back(k1 + 1);
-                indices.push_back(k2);
-                indices.push_back(k2 + 1);
+                // Texture coordinates (2 floats)
+                data.vertices.push_back(s);
+                data.vertices.push_back(t);
             }
         }
+
+        // generate CCW index list of sphere triangles
+        int k1, k2;
+        for (int i = 0; i < stacks; ++i) {
+            k1 = i * (sectors + 1);     // beginning of current stack
+            k2 = k1 + sectors + 1;      // beginning of next stack
+
+            for (int j = 0; j < sectors; ++j, ++k1, ++k2) {
+                // 2 triangles per sector excluding first and last stacks
+                // k1 => k2 => k1+1
+                if (i != 0) {
+                    data.indices.push_back(k1);
+                    data.indices.push_back(k2);
+                    data.indices.push_back(k1 + 1);
+                }
+
+                // k1+1 => k2 => k2+1
+                if (i != (stacks - 1)) {
+                    data.indices.push_back(k1 + 1);
+                    data.indices.push_back(k2);
+                    data.indices.push_back(k2 + 1);
+                }
+            }
+        }
+
+        return data;
     }
 
-    return indices;
 }
+
+
+
