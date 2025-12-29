@@ -1,4 +1,4 @@
-#ifndef ENGINE_H
+ï»¿#ifndef ENGINE_H
 #define ENGINE_H
 
 #include "../glFrameWork/core.h"
@@ -8,16 +8,22 @@
 #include "../application/application.h"
 #include "../glFrameWork/buffers.h"
 
+#include "reactphysics3d/reactphysics3d.h" // åŠ è½½ç¬¬ä¸‰æ–¹ç‰©ç†å¼•æ“
+
 
 
 class Engine {
+public:
+	rp3d::PhysicsCommon physicsCommon;
+	rp3d::PhysicsWorld* pWorld{nullptr};
+
 public:
 	bool mouseCaptured{ false };
 
 public:
 	void update();
 
-public: // Ïà»ú¿ØÖÆ
+public: // ç›¸æœºæ§åˆ¶
 	struct CameraData {
 		glm::vec3 nowSpeed{ 0.0f, 0.0f, 0.0f };
 		glm::vec3 maxSpeed{ 5.0f , 5.0f, 5.0f };
@@ -32,16 +38,16 @@ private:
 
 public:
 	/**
-	* @brief Ä¬ÈÏ¹¹Ôìº¯Êı
+	* @brief é»˜è®¤æ„é€ å‡½æ•°
 	*/
 	Engine();
 	/**
-	* @brief Îö¹¹º¯Êı
+	* @brief ææ„å‡½æ•°
 	*/
 	~Engine();
 	/**
-	* @brief ³õÊ¼»¯ÒıÇæ
-	* @return ×´Ì¬Öµ
+	* @brief åˆå§‹åŒ–å¼•æ“
+	* @return çŠ¶æ€å€¼
 	*/
 	int init();
 

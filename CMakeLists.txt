@@ -10,6 +10,14 @@ SET(CMAKE_CXX_STANDARD 17)
 # 设置全局编译选项
 add_definitions(-DDEBUG)
 
+# 设置第三方库
+#if(WIN32)
+#  list(APPEND CMAKE_PREFIX_PATH "C:\\Program Files (x86)\\ReactPhysics3D")
+#elseif(APPLE)
+#  list(APPEND CMAKE_PREFIX_PATH "/usr/local/lib/cmake/ReactPhysics3D")
+#endif()
+#find_package(ReactPhysics3D REQUIRED)
+
 # 拷贝资源文件
 file(GLOB ASSETS "./assets")
 file(COPY ${ASSETS} DESTINATION ${CMAKE_BINARY_DIR})
@@ -28,4 +36,4 @@ aux_source_directory(. SRCS)
 # 添加可执行文件
 add_executable(glStudy ${SRCS})
 
-target_link_libraries(glStudy glfw3 wrapper app fw engine)
+target_link_libraries(glStudy glfw3 wrapper app fw engine reactphysics3d)

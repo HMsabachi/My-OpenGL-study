@@ -1,15 +1,15 @@
-// buffers.h
+ï»¿// buffers.h
 #ifndef BUFFERS_H
 #define BUFFERS_H
 
-#include "core.h"  // OpenGLº¯Êı¼ÓÔØÆ÷
-#include <vector>       // ÓÃÓÚÊı¾İ´æ´¢
-#include <string>       // ×Ö·û´®´¦Àí
-#include <sstream>      // ×Ö·û´®Á÷½âÎö
-#include <type_traits>  // ÀàĞÍ trait
+#include "core.h"  // OpenGLå‡½æ•°åŠ è½½å™¨
+#include <vector>       // ç”¨äºæ•°æ®å­˜å‚¨
+#include <string>       // å­—ç¬¦ä¸²å¤„ç†
+#include <sstream>      // å­—ç¬¦ä¸²æµè§£æ
+#include <type_traits>  // ç±»å‹ trait
 
 /**
- * @brief »ñÈ¡OpenGLÊı¾İÀàĞÍµÄÄ£°åº¯Êı¡£
+ * @brief è·å–OpenGLæ•°æ®ç±»å‹çš„æ¨¡æ¿å‡½æ•°ã€‚
  */
 template<typename T>
 GLenum getGLType() {
@@ -26,19 +26,19 @@ GLenum getGLType() {
 
 /**
  * @class Buffer
- * @brief Í¨ÓÃ»º³å¶ÔÏóÄ£°åÀà£¬ÓÃÓÚOpenGLÖĞ¹ÜÀíVBO»òEBO¡£
+ * @brief é€šç”¨ç¼“å†²å¯¹è±¡æ¨¡æ¿ç±»ï¼Œç”¨äºOpenGLä¸­ç®¡ç†VBOæˆ–EBOã€‚
  *
- * ¸ÃÀàÖ§³Ö¶àÖÖÊı¾İÀàĞÍ£¬Í¨¹ıÄ£°å²ÎÊıTÖ¸¶¨¡£×Ô¶¯ÍÆµ¼OpenGLÀàĞÍ¡£
- * Ö§³ÖÊı¾İÉÏ´«¡¢¸üĞÂ¡¢°ó¶¨µÈ²Ù×÷¡£
+ * è¯¥ç±»æ”¯æŒå¤šç§æ•°æ®ç±»å‹ï¼Œé€šè¿‡æ¨¡æ¿å‚æ•°TæŒ‡å®šã€‚è‡ªåŠ¨æ¨å¯¼OpenGLç±»å‹ã€‚
+ * æ”¯æŒæ•°æ®ä¸Šä¼ ã€æ›´æ–°ã€ç»‘å®šç­‰æ“ä½œã€‚
  */
 template<typename T>
 class Buffer {
 public:
     /**
-     * @brief ¹¹Ôìº¯Êı£¬´´½¨»º³å²¢ÉÏ´«Êı¾İ¡£
-     * @param data Êı¾İÏòÁ¿¡£
-     * @param target »º³åÄ¿±ê£¬ÈçGL_ARRAY_BUFFER»òGL_ELEMENT_ARRAY_BUFFER¡£
-     * @param usage Êı¾İÊ¹ÓÃÄ£Ê½£¬Ä¬ÈÏGL_STATIC_DRAW¡£
+     * @brief æ„é€ å‡½æ•°ï¼Œåˆ›å»ºç¼“å†²å¹¶ä¸Šä¼ æ•°æ®ã€‚
+     * @param data æ•°æ®å‘é‡ã€‚
+     * @param target ç¼“å†²ç›®æ ‡ï¼Œå¦‚GL_ARRAY_BUFFERæˆ–GL_ELEMENT_ARRAY_BUFFERã€‚
+     * @param usage æ•°æ®ä½¿ç”¨æ¨¡å¼ï¼Œé»˜è®¤GL_STATIC_DRAWã€‚
      */
     Buffer(const std::vector<T>& data, GLenum target, GLenum usage = GL_STATIC_DRAW)
         : m_target(target), m_usage(usage), m_type(getGLType<T>()) {
@@ -51,30 +51,30 @@ public:
     }
 
     /**
-     * @brief Îö¹¹º¯Êı£¬ÊÍ·Å»º³å×ÊÔ´¡£
+     * @brief ææ„å‡½æ•°ï¼Œé‡Šæ”¾ç¼“å†²èµ„æºã€‚
      */
     ~Buffer() {
         glDeleteBuffers(1, &m_id);
     }
 
     /**
-     * @brief °ó¶¨»º³å¡£
+     * @brief ç»‘å®šç¼“å†²ã€‚
      */
     void bind() const {
         glBindBuffer(m_target, m_id);
     }
 
     /**
-     * @brief ½â°ó»º³å¡£
+     * @brief è§£ç»‘ç¼“å†²ã€‚
      */
     void unbind() const {
         glBindBuffer(m_target, 0);
     }
 
     /**
-     * @brief ¸üĞÂ»º³åÊı¾İ¡£
-     * @param data ĞÂÊı¾İÏòÁ¿¡£
-     * @param offset Æ«ÒÆÁ¿£¨×Ö½Ú£©£¬Ä¬ÈÏ0¡£
+     * @brief æ›´æ–°ç¼“å†²æ•°æ®ã€‚
+     * @param data æ–°æ•°æ®å‘é‡ã€‚
+     * @param offset åç§»é‡ï¼ˆå­—èŠ‚ï¼‰ï¼Œé»˜è®¤0ã€‚
      */
     void update(const std::vector<T>& data, size_t offset = 0) {
         bind();
@@ -87,22 +87,22 @@ public:
     }
 
     /**
-     * @brief »ñÈ¡Êı¾İ´óĞ¡£¨×Ö½Ú£©¡£
+     * @brief è·å–æ•°æ®å¤§å°ï¼ˆå­—èŠ‚ï¼‰ã€‚
      */
     size_t size() const { return m_size; }
 
     /**
-     * @brief »ñÈ¡ÔªËØÊıÁ¿¡£
+     * @brief è·å–å…ƒç´ æ•°é‡ã€‚
      */
     size_t count() const { return m_count; }
 
     /**
-     * @brief »ñÈ¡OpenGLÊı¾İÀàĞÍ¡£
+     * @brief è·å–OpenGLæ•°æ®ç±»å‹ã€‚
      */
     GLenum type() const { return m_type; }
 
     /**
-     * @brief »ñÈ¡»º³åID¡£
+     * @brief è·å–ç¼“å†²IDã€‚
      */
     GLuint id() const { return m_id; }
 
@@ -117,60 +117,60 @@ private:
 
 /**
  * @typedef VBO
- * @brief Vertex Buffer Object£¬±ğÃûÎªBuffer<T> with GL_ARRAY_BUFFER¡£
+ * @brief Vertex Buffer Objectï¼Œåˆ«åä¸ºBuffer<T> with GL_ARRAY_BUFFERã€‚
  */
 template<typename T>
 using VBO = Buffer<T>;
 
 /**
  * @typedef EBO
- * @brief Element Buffer Object£¬±ğÃûÎªBuffer<unsigned int> with GL_ELEMENT_ARRAY_BUFFER£¬Ä¬ÈÏunsigned int¡£
+ * @brief Element Buffer Objectï¼Œåˆ«åä¸ºBuffer<unsigned int> with GL_ELEMENT_ARRAY_BUFFERï¼Œé»˜è®¤unsigned intã€‚
  */
 template<typename T = unsigned int>
 using EBO = Buffer<T>;
 
 /**
  * @class VAO
- * @brief Vertex Array Object ·â×°Àà£¬ÓÃÓÚ¹ÜÀí¶¥µãÊı×é¡£
+ * @brief Vertex Array Object å°è£…ç±»ï¼Œç”¨äºç®¡ç†é¡¶ç‚¹æ•°ç»„ã€‚
  *
- * Ö§³ÖÌí¼ÓÄ£°åVBOºÍEBO£¬²¼¾Ö×Ö·û´®Ö§³ÖÀàĞÍÖ¸¶¨£¬Èç"3f 2i"£¨3 float + 2 int£©¡£
- * ÀàĞÍ´úÂë£ºf=GL_FLOAT, d=GL_DOUBLE, i=GL_INT, ui=GL_UNSIGNED_INT, s=GL_SHORT, us=GL_UNSIGNED_SHORT, b=GL_BYTE, ub=GL_UNSIGNED_BYTE¡£
+ * æ”¯æŒæ·»åŠ æ¨¡æ¿VBOå’ŒEBOï¼Œå¸ƒå±€å­—ç¬¦ä¸²æ”¯æŒç±»å‹æŒ‡å®šï¼Œå¦‚"3f 2i"ï¼ˆ3 float + 2 intï¼‰ã€‚
+ * ç±»å‹ä»£ç ï¼šf=GL_FLOAT, d=GL_DOUBLE, i=GL_INT, ui=GL_UNSIGNED_INT, s=GL_SHORT, us=GL_UNSIGNED_SHORT, b=GL_BYTE, ub=GL_UNSIGNED_BYTEã€‚
  */
 class VAO {
 public:
     /**
-     * @brief ¹¹Ôìº¯Êı£¬´´½¨VAO¡£
+     * @brief æ„é€ å‡½æ•°ï¼Œåˆ›å»ºVAOã€‚
      */
     VAO() {
         glGenVertexArrays(1, &m_id);
     }
 
     /**
-     * @brief Îö¹¹º¯Êı£¬ÊÍ·ÅVAO×ÊÔ´¡£
+     * @brief ææ„å‡½æ•°ï¼Œé‡Šæ”¾VAOèµ„æºã€‚
      */
     ~VAO() {
         glDeleteVertexArrays(1, &m_id);
     }
 
     /**
-     * @brief °ó¶¨VAO¡£
+     * @brief ç»‘å®šVAOã€‚
      */
     void bind() const {
         glBindVertexArray(m_id);
     }
 
     /**
-     * @brief ½â°óVAO¡£
+     * @brief è§£ç»‘VAOã€‚
      */
     void unbind() const {
         glBindVertexArray(0);
     }
 
     /**
-     * @brief Ìí¼ÓVBO²¢ÅäÖÃÊôĞÔ¡£
-     * @param vbo VBOÄ£°å¶ÔÏó¡£
-     * @param layout ÊôĞÔ²¼¾Ö£¬Èç"3f 2i"£¨size + type£©¡£
-     * @param normalized ÊÇ·ñ¹æ·¶»¯£¬Ä¬ÈÏGL_FALSE¡£
+     * @brief æ·»åŠ VBOå¹¶é…ç½®å±æ€§ã€‚
+     * @param vbo VBOæ¨¡æ¿å¯¹è±¡ã€‚
+     * @param layout å±æ€§å¸ƒå±€ï¼Œå¦‚"3f 2i"ï¼ˆsize + typeï¼‰ã€‚
+     * @param normalized æ˜¯å¦è§„èŒƒåŒ–ï¼Œé»˜è®¤GL_FALSEã€‚
      */
     template<typename T>
     void addVBO(const VBO<T>& vbo, const std::string& layout, GLboolean normalized = GL_FALSE) {
@@ -182,7 +182,7 @@ public:
         GLuint index = 0;
         GLsizei stride = 0;
 
-        // ¼ÆËãstride
+        // è®¡ç®—stride
         std::istringstream iss2(layout);
         while (iss2 >> token) {
             int size = std::stoi(token.substr(0, token.size() - 1));
@@ -208,8 +208,8 @@ public:
     }
 
     /**
-     * @brief Ìí¼ÓEBO¡£
-     * @param ebo EBOÄ£°å¶ÔÏó¡£
+     * @brief æ·»åŠ EBOã€‚
+     * @param ebo EBOæ¨¡æ¿å¯¹è±¡ã€‚
      */
     template<typename T>
     void addEBO(const EBO<T>& ebo) {
@@ -222,10 +222,10 @@ public:
     }
 
     /**
-     * @brief »æÖÆ¼¸ºÎ¡£
-     * @param mode Ä£Ê½£¬Ä¬ÈÏGL_TRIANGLES¡£
-     * @param count Ö¸¶¨count£¨ÎŞEBOÊ±£©£¬Ä¬ÈÏ0Ê¹ÓÃ×Ô¶¯¼ÆËã¡£
-     * @param offset Æ«ÒÆ£¬Ä¬ÈÏ0¡£
+     * @brief ç»˜åˆ¶å‡ ä½•ã€‚
+     * @param mode æ¨¡å¼ï¼Œé»˜è®¤GL_TRIANGLESã€‚
+     * @param count æŒ‡å®šcountï¼ˆæ— EBOæ—¶ï¼‰ï¼Œé»˜è®¤0ä½¿ç”¨è‡ªåŠ¨è®¡ç®—ã€‚
+     * @param offset åç§»ï¼Œé»˜è®¤0ã€‚
      */
     void draw(GLenum mode = GL_TRIANGLES, GLsizei count = 0, size_t offset = 0) const {
         bind();
@@ -239,7 +239,7 @@ public:
     }
 
     /**
-     * @brief »ñÈ¡VAO ID¡£
+     * @brief è·å–VAO IDã€‚
      */
     GLuint id() const { return m_id; }
 
@@ -251,7 +251,7 @@ private:
     size_t m_vertexCount = 0;
 
     /**
-     * @brief ½âÎö²¼¾ÖÀàĞÍ×Ö·û¡£
+     * @brief è§£æå¸ƒå±€ç±»å‹å­—ç¬¦ã€‚
      */
     static GLenum parseType(char c) {
         switch (c) {
@@ -268,7 +268,7 @@ private:
     }
 
     /**
-     * @brief »ñÈ¡OpenGLÀàĞÍµÄ´óĞ¡¡£
+     * @brief è·å–OpenGLç±»å‹çš„å¤§å°ã€‚
      */
     static size_t getTypeSize(GLenum type) {
         switch (type) {

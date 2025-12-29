@@ -1,4 +1,4 @@
-#include "engine.h"
+ï»¿#include "engine.h"
 #include "../application/application.h"
 #include <iostream>
 #include <conio.h>
@@ -18,7 +18,9 @@
 
 #include "camera.h"
 
-#include "../application/stb_image.h" // ¼ÓÔØÍ¼Æ¬
+#include "../application/stb_image.h" // åŠ è½½å›¾ç‰‡
+
+#include "reactphysics3d/reactphysics3d.h" // åŠ è½½ç¬¬ä¸‰æ–¹ç‰©ç†å¼•æ“
 
 
 #define Ptr std::shared_ptr
@@ -53,7 +55,7 @@ void Engine::update()
 void Engine::updateCamera(float deltaTime)
 {
     //std::cout << cameraData.acceleration.x << std::endl;
-	// ¼ÆËãÏà»úÎ»ÖÃ¸üĞÂ
+	// è®¡ç®—ç›¸æœºä½ç½®æ›´æ–°
 	cameraData.nowSpeed += cameraData.acceleration * deltaTime;
     cameraData.nowSpeed = glm::clamp(cameraData.nowSpeed, -cameraData.maxSpeed, cameraData.maxSpeed);
     glm::vec3 offset = cameraData.nowSpeed * deltaTime;
@@ -64,7 +66,7 @@ void Engine::updateCamera(float deltaTime)
 	cameraData.acceleration = -cameraData.nowSpeed * 1.5f;
     cameraData.acceleration.y = -cameraData.nowSpeed.y * 6.0f;
 
-	// ¼ÆËãÏà»úÊÓ½Ç¸üĞÂ
+	// è®¡ç®—ç›¸æœºè§†è§’æ›´æ–°
     auto mOffset = myApp->getMouseMoveDistance();
     
     camera->processMouseMovement(mOffset.x, -mOffset.y);
@@ -83,12 +85,12 @@ void Engine::updateCamera(float deltaTime)
 
 int Engine::_initOpenGL()
 {
-	// ³õÊ¼»¯´°¿Ú
+	// åˆå§‹åŒ–çª—å£
 	if(!myApp->init()) {
 		std::cerr << "Failed to initialize application." << std::endl;
 		return -1;
 	}
-	// ÉèÖÃOpenGL×´Ì¬
+	// è®¾ç½®OpenGLçŠ¶æ€
 	GL_CALL(glEnable(GL_BLEND));
 	GL_CALL(glEnable(GL_DEPTH_TEST));
 	//glDisable(GL_FRAMEBUFFER_SRGB);
@@ -163,8 +165,8 @@ void Engine::setupDemoData()
     -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
     };
     this->indices = {
-        0, 1, 3, // µÚÒ»¸öÈı½ÇĞÎ
-        1, 2, 3  // µÚ¶ş¸öÈı½ÇĞÎ
+        0, 1, 3, // ç¬¬ä¸€ä¸ªä¸‰è§’å½¢
+        1, 2, 3  // ç¬¬äºŒä¸ªä¸‰è§’å½¢
     };
     auto Vbo = MPtr<Buffer<float>>(vertices, GL_ARRAY_BUFFER, GL_STATIC_DRAW);
     auto Ebo = MPtr<Buffer<unsigned int>>(indices, GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW);
@@ -220,7 +222,7 @@ void Engine::render()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, texture2);
 
-        //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);// äÖÈ¾Ïß¿òÄ£Ê½
+        //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);// æ¸²æŸ“çº¿æ¡†æ¨¡å¼
 
         for (unsigned int i = 0; i < 10; i++)
         {
@@ -240,7 +242,7 @@ void Engine::render()
 
 void Engine::framebufferSizeCallback(int width, int height)
 {
-	// µ÷ÕûÊÓ¿Ú´óĞ¡
+	// è°ƒæ•´è§†å£å¤§å°
 	Engine* self = myApp->engine;
 	GL_CALL(glViewport(0, 0, width, height));
 	self->camera->setAspect(static_cast<float>(width) / static_cast<float>(height));
@@ -271,6 +273,9 @@ int Engine::init() {
     shader = new Shader("assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
 
 	myApp->setKeyboardCallback(keyCallback);
+
+    // åˆå§‹åŒ–ç‰©ç†å¼•æ“
+    this->pWorld = this->physicsCommon.createPhysicsWorld();
 
     return 0;
 
