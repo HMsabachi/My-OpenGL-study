@@ -3,6 +3,7 @@
 #include "../../wrapper/widgets.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <random>
+#include <iostream>
 
 Slime::Slime(Engine* engine, const glm::vec3& center, int numParticles, 
              float particleRadius, float initialRadius, Shader* shader, GLuint texture)
@@ -58,38 +59,74 @@ void Slime::initParticles(float initialRadius) {
     
     m_particles.resize(m_numParticles);
     
-    for (int i = 0; i < m_numParticles; ++i) {
-        Particle& p = m_particles[i];
+    // ✅ 改进的初始化：确保粒子均匀分布，不重叠
+    int particlesCreated = 0;
+    int maxAttempts = m_numParticles * 10;  // 最大尝试次数
+    int attempts = 0;
+    
+    while (particlesCreated < m_numParticles && attempts < maxAttempts) {
+        attempts++;
         
-        // 在球体内随机生成初始位置
+        // 在球体内随机生成位置
         glm::vec3 randomOffset;
         do {
             randomOffset = glm::vec3(dis(gen), dis(gen), dis(gen));
         } while (glm::length(randomOffset) > 1.0f);  // 确保在单位球内
         
         randomOffset *= initialRadius;
-        p.position = m_center + randomOffset;
-        p.velocity = glm::vec3(0.0f);
+        glm::vec3 newPosition = m_center + randomOffset;
         
-        // 创建物理刚体
-        rp3d::Vector3 rp3dPos(p.position.x, p.position.y, p.position.z);
-        rp3d::Transform transform(rp3dPos, rp3d::Quaternion::identity());
+        // ✅ 检查是否与已有粒子重叠
+        bool tooClose = false;
+        float minDistance = m_particleRadius * 2.1f;  // 最小间距（略大于直径）
         
-        p.rigidBody = m_engine->pWorld->createRigidBody(transform);
-        p.rigidBody->setType(rp3d::BodyType::DYNAMIC);
+        for (int j = 0; j < particlesCreated; ++j) {
+            float dist = glm::length(m_particles[j].position - newPosition);
+            if (dist < minDistance) {
+                tooClose = true;
+                break;
+            }
+        }
         
-        // 添加碰撞体
-        rp3d::Transform colliderTransform = rp3d::Transform::identity();
-        p.collider = p.rigidBody->addCollider(m_sphereShape, colliderTransform);
-        
-        // 设置质量和物理属性
-        p.collider->getMaterial().setMassDensity(1.0f);
-        p.collider->getMaterial().setBounciness(0.3f);  // 弹性
-        p.collider->getMaterial().setFrictionCoefficient(0.5f);  // 摩擦力
-        p.rigidBody->updateMassPropertiesFromColliders();
-        
-        // 启用重力
-        p.rigidBody->enableGravity(true);
+        // 如果不重叠，创建粒子
+        if (!tooClose) {
+            Particle& p = m_particles[particlesCreated];
+            p.position = newPosition;
+            p.velocity = glm::vec3(0.0f);
+            
+            // 创建物理刚体
+            rp3d::Vector3 rp3dPos(p.position.x, p.position.y, p.position.z);
+            rp3d::Transform transform(rp3dPos, rp3d::Quaternion::identity());
+            
+            p.rigidBody = m_engine->pWorld->createRigidBody(transform);
+            p.rigidBody->setType(rp3d::BodyType::DYNAMIC);
+            
+            // 添加碰撞体
+            rp3d::Transform colliderTransform = rp3d::Transform::identity();
+            p.collider = p.rigidBody->addCollider(m_sphereShape, colliderTransform);
+            
+            // 设置质量和物理属性 - 优化流动性
+            p.collider->getMaterial().setMassDensity(1.0f);
+            p.collider->getMaterial().setBounciness(0.5f);  // 增加弹性
+            p.collider->getMaterial().setFrictionCoefficient(0.05f);  // 极低摩擦力
+            p.rigidBody->updateMassPropertiesFromColliders();
+            
+            // 启用重力
+            p.rigidBody->enableGravity(true);
+            
+            // 设置线性阻尼（空气阻力）
+            p.rigidBody->setLinearDamping(0.1f);
+            
+            particlesCreated++;
+        }
+    }
+    
+    // 如果无法创建足够的粒子（空间太小），调整数组大小
+    if (particlesCreated < m_numParticles) {
+        std::cout << "警告：只创建了 " << particlesCreated << " / " << m_numParticles 
+                  << " 个粒子（空间不足或半径太大）" << std::endl;
+        m_particles.resize(particlesCreated);
+        m_numParticles = particlesCreated;
     }
 }
 
@@ -155,6 +192,8 @@ void Slime::updateCenter() {
 }
 
 void Slime::applyForces(float deltaTime) {
+    float maxCohesionDistance = this->m_maxCohesionDistance;
+    
     for (auto& particle : m_particles) {
         if (!particle.rigidBody) continue;
         
@@ -162,20 +201,35 @@ void Slime::applyForces(float deltaTime) {
         glm::vec3 toCenter = m_center - particle.position;
         float distance = glm::length(toCenter);
         
-        if (distance > 0.001f) {  // 避免除零
+        // 只在一定距离内施加向心力
+        if (distance > 0.001f && distance < maxCohesionDistance) {
             glm::vec3 cohesionDirection = glm::normalize(toCenter);
             
-            // 向心力：距离越远，力越大
-            glm::vec3 cohesionForceVec = cohesionDirection * m_cohesionForce * distance;
+            // ✅ 修改：距离越远，力越小（反比关系）
+            // 使用 1/distance 或 1/distance² 模拟引力
+            float forceMagnitude = m_cohesionForce / (distance + 0.1f);  // +0.1避免除零和过大的力
+            glm::vec3 cohesionForceVec = cohesionDirection * forceMagnitude;
             
-            // 应用力到刚体（使用正确的 API）
+            // 应用力到刚体
             rp3d::Vector3 rp3dForce(cohesionForceVec.x, cohesionForceVec.y, cohesionForceVec.z);
             particle.rigidBody->applyWorldForceAtCenterOfMass(rp3dForce);
         }
         
-        // 应用阻尼（减速）
+
+        // 只对水平速度应用阻尼
         rp3d::Vector3 currentVel = particle.rigidBody->getLinearVelocity();
-        particle.rigidBody->setLinearVelocity(currentVel * m_damping);
+        
+        // 分离水平和垂直速度
+        glm::vec3 vel(currentVel.x, currentVel.y, currentVel.z);
+        glm::vec3 horizontalVel(vel.x, 0.0f, vel.z);  // 水平分量
+        float verticalVel = vel.y;                     // 垂直分量（保持不变）
+        
+        // 只对水平速度应用阻尼
+        horizontalVel *= m_damping;
+        
+        // 重新组合速度（垂直速度不受自定义阻尼影响，只受物理引擎的线性阻尼影响）
+        glm::vec3 newVel(horizontalVel.x, verticalVel, horizontalVel.z);
+        particle.rigidBody->setLinearVelocity(rp3d::Vector3(newVel.x, newVel.y, newVel.z));
     }
 }
 

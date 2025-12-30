@@ -52,6 +52,11 @@ void Engine::update()
     setAcceleration(this->cameraData.acceleration);
     this->updateCamera(deltaTime);
 
+    if (glfwGetKey(myApp->getWindow(), GLFW_KEY_Z) == GLFW_PRESS)
+    {
+		camera->lookAt(glm::vec3(-2.0f, -5.0f, 0.0f), true);
+	}
+
 }
 
 void Engine::updateCamera(float deltaTime)
@@ -208,9 +213,11 @@ void Engine::setupDemoData()
     scene->addObject(sphere);
 
 	// 创建 slime 对象
-	Slime* slime = new Slime(this, glm::vec3(0.0f, 5.0f, 0.0f), 30, 0.15f, 1.0f, sphereShader, texture2);
-    slime->setCohesionForce(8.0f);
-    slime->setDamping(0.9f);
+	// 优化参数：减少粒子数量，增大半径，提高流动性
+	Slime* slime = new Slime(this, glm::vec3(-2.0f, -3.0f, 0.0f), 70, 0.08f, 1.5f, sphereShader, texture2);
+    slime->setCohesionForce(0.1f);    // 适中的向心力
+    slime->setDamping(0.98f);         // 适中的阻尼
+    slime->setMaxCohesionDistance(1.5f); // 增大向心力作用距离
     scene->addObject(slime);
 }
 
@@ -289,7 +296,7 @@ int Engine::init() {
     this->_initOpenGL();
     textureManager = new TextureManager();
     shaderManager = new ShaderManager();
-    camera = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+    camera = new Camera(glm::vec3(-2.0f, -3.0f, 3.0f));
     camera->enableFPS(true);
     shaderManager->loadShader("basic", "assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
     shaderManager->loadShader("sphere", "assets/shaders/sphere_vertex.glsl", "assets/shaders/sphere_fragment.glsl");

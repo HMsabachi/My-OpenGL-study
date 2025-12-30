@@ -1,4 +1,5 @@
-#include "camera.h"
+﻿#include "camera.h"
+#include "object/object.h"  // 引入 Object 类定义
 #include <algorithm>
 
 Camera::Camera(glm::vec3 position, glm::vec3 target, glm::vec3 up,
@@ -94,7 +95,7 @@ void Camera::updateProjection() {
     }
 }
 
-// ================= FPS Camera ʵ�� =================
+// ================= FPS Camera 实现 =================
 
 void Camera::enableFPS(bool enable) {
     m_useFPS = enable;
@@ -168,7 +169,7 @@ void Camera::updateFPSVectors() {
     m_right = glm::normalize(glm::cross(m_front, m_worldUp));
     m_up = glm::normalize(glm::cross(m_right, m_front));
 
-    // Roll����ѡ��
+    // Roll（可选）
     if (m_roll != 0.0f) {
         glm::mat4 rollMat =
             glm::rotate(glm::mat4(1.0f),
@@ -178,6 +179,44 @@ void Camera::updateFPSVectors() {
         m_right = glm::normalize(glm::cross(m_front, m_up));
     }
 
-    // ͬ�� target����֤�ɽӿ��߼���ȷ
+    // 同步 target，保证旧接口逻辑正确
     m_target = m_position + m_front;
+}
+
+// ================= LookAt 方法实现 =================
+
+void Camera::lookAt(const glm::vec3& target, bool smooth) {
+    if (m_useFPS) {
+        // FPS 模式：计算朝向目标的 Yaw 和 Pitch
+        glm::vec3 direction = glm::normalize(target - m_position);
+        
+        if (smooth) {
+            // 平滑过渡：插值到目标角度
+            float targetYaw = glm::degrees(atan2(direction.z, direction.x));
+            float targetPitch = glm::degrees(asin(direction.y));
+            
+            // 简单线性插值，可以调整插值速度
+            float lerpFactor = 0.05f;
+            m_yaw = glm::mix(m_yaw, targetYaw, lerpFactor);
+            m_pitch = glm::mix(m_pitch, targetPitch, lerpFactor);
+        } else {
+            // 立即转向
+            m_yaw = glm::degrees(atan2(direction.z, direction.x));
+            m_pitch = glm::degrees(asin(direction.y));
+            
+            // 限制 Pitch 范围
+            m_pitch = std::clamp(m_pitch, -89.0f, 89.0f);
+        }
+        
+        updateFPSVectors();
+    } else {
+        // LookAt 模式：直接设置目标点
+        m_target = target;
+    }
+}
+
+void Camera::lookAt(const Object* object, bool smooth) {
+    if (object != nullptr) {
+        lookAt(object->getPosition(), smooth);
+    }
 }

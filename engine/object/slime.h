@@ -58,6 +58,7 @@ public:
     // 参数设置
     void setCohesionForce(float force) { m_cohesionForce = force; }
     void setDamping(float damping) { m_damping = damping; }
+	void setMaxCohesionDistance(float distance) { m_maxCohesionDistance = distance; }
     
     // 获取粒子信息
     const std::vector<Particle>& getParticles() const { return m_particles; }
@@ -69,6 +70,7 @@ private:
     int m_numParticles;                       // 粒子数量
     float m_particleRadius;                   // 粒子半径
     glm::vec3 m_center;                       // 史莱姆中心点
+    float m_maxCohesionDistance = 0.5f;       // 向心力最大作用距离
 
     // 力参数
     float m_cohesionForce;     // 向心力强度

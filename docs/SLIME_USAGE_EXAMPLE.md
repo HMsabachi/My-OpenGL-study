@@ -1,133 +1,199 @@
-﻿# Slime 类使用指南
+﻿# 🟢 史莱姆系统使用指南
 
-## 📝 快速开始
+## 📋 快速开始
 
-### 1. 在 engine.cpp 中添加头文件
+史莱姆类已经创建完成并集成到项目中，使用基于物理的粒子系统模拟液态效果。
 
-在 `engine/engine.cpp` 顶部添加：
+---
 
-```cpp
-#include "object/slime.h" // 引入 Slime 类
-```
+## 🎯 核心特性
 
-### 2. 加载 Slime 的着色器
+✅ **物理模拟** - 每个粒子是独立的物理刚体
+✅ **碰撞检测** - 粒子之间、粒子与场景物体自动碰撞
+✅ **向心力系统** - 保持史莱姆形状的聚合力
+✅ **流动性** - 低摩擦力实现液态效果
+✅ **可调参数** - 灵活配置各种效果
 
-在 `Engine::init()` 函数中添加：
+---
 
-```cpp
-shaderManager->loadShader("slime", "assets/shaders/slime_vertex.glsl", "assets/shaders/slime_fragment.glsl");
-```
-
-### 3. 在 setupDemoData 中创建 Slime
-
-在 `Engine::setupDemoData()` 函数中添加：
+## 🚀 当前配置（engine.cpp）
 
 ```cpp
-// 配置 slime shader
-auto* slimeShader = shaderManager->getShader("slime");
-slimeShader->begin();
-slimeShader->setInt("texture1", 0);  // 纹理单元 0
-slimeShader->end();
-
-// 创建史莱姆对象
-// 参数：引擎, 中心位置, 粒子数量, 粒子半径, 初始半径, 着色器, 纹理
+// 创建史莱姆
 Slime* slime = new Slime(
     this,                           // Engine 指针
-    glm::vec3(0.0f, 3.0f, 0.0f),   // 中心位置（在空中）
-    30,                             // 粒子数量
-    0.12f,                          // 每个粒子的半径
-    0.8f,                           // 初始生成半径
-    slimeShader,                    // 着色器
-    texture2                        // 纹理（可选）
+    glm::vec3(0.0f, 5.0f, 0.0f),   // 初始位置（中心点）
+    70,                             // 粒子数量
+    0.1f,                           // 粒子半径
+    1.0f,                           // 初始生成半径（粒子分布范围）
+    sphereShader,                   // 着色器
+    texture2                        // 纹理
 );
 
-// 设置史莱姆的物理参数（可选）
-slime->setCohesionForce(15.0f);    // 向心力强度（默认 10.0）
-slime->setDamping(0.95f);          // 阻尼系数（默认 0.98）
-
-// 添加到场景
+slime->setCohesionForce(6.0f);    // 向心力强度
+slime->setDamping(0.995f);         // 水平阻尼系数
 scene->addObject(slime);
 ```
 
-### 4. 更新全局 Uniforms
+---
 
-在 `Engine::updateGlobalUniforms()` 函数末尾添加：
+## 🎨 参数调节指南
 
+### 1. 粒子数量 (numParticles)
 ```cpp
-auto* slimeShader = shaderManager->getShader("slime");
-slimeShader->begin();
-slimeShader->setMat4("uView", viewMatrix);
-slimeShader->setMat4("uProjection", projectionMatrix);
-// Slime 着色器需要额外的 uniforms
-slimeShader->setVec3("uCameraPos", camera->getPosition());
-slimeShader->setFloat("uTime", (float)glfwGetTime());
-slimeShader->setVec3("uSlimeColor", glm::vec3(0.2f, 0.8f, 0.3f)); // 绿色史莱姆
-slimeShader->end();
+30-40  → 流畅性能，粗糙效果
+50-70  → 平衡性能和效果 ✅ 推荐
+80+    → 细腻效果，性能要求高
 ```
 
-## 🎨 参数调整指南
-
-### 粒子数量 (numParticles)
-- **10-20**: 小型史莱姆，性能好
-- **30-50**: 中型史莱姆，推荐
-- **50-100**: 大型史莱姆，性能要求高
-
-### 粒子半径 (particleRadius)
-- **0.08-0.12**: 小粒子，细腻效果
-- **0.12-0.20**: 中等粒子，推荐
-- **0.20-0.30**: 大粒子，更明显
-
-### 初始半径 (initialRadius)
-- **0.5-1.0**: 紧凑的史莱姆
-- **1.0-2.0**: 松散的史莱姆
-
-### 向心力 (cohesionForce)
-- **5.0-10.0**: 弱向心力，松散
-- **10.0-20.0**: 中等向心力，推荐
-- **20.0-50.0**: 强向心力，紧密
-
-### 阻尼 (damping)
-- **0.90-0.95**: 高阻尼，慢动作
-- **0.95-0.98**: 中等阻尼，推荐
-- **0.98-0.99**: 低阻尼，弹跳感强
-
-## 🎯 效果预期
-
-运行程序后，你应该看到：
-
-1. ✅ 一团由小球体组成的史莱姆
-2. ✅ 球体会受重力下落
-3. ✅ 球体之间有碰撞效果
-4. ✅ 球体会被向心力拉向中心
-5. ✅ 落到地板后会形成"液态堆"
-
-## 🔧 常见问题
-
-### Q: 史莱姆粒子飞散开了
-A: 增加 `cohesionForce` 的值，例如从 10.0 改为 20.0
-
-### Q: 史莱姆太僵硬，不够液态
-A: 减小 `damping` 的值，例如从 0.98 改为 0.92
-
-### Q: 史莱姆穿透地板
-A: 确保地板已经设置了物理属性：
+### 2. 粒子半径 (particleRadius)
 ```cpp
-floor->initPhysics(Object::PhysicsType::STATIC, Object::CollisionShape::PLANE, glm::vec3(50.0f, 0.2f, 50.0f));
+0.08   → 小粒子，细腻但易穿透
+0.10   → 适中 ✅ 推荐
+0.15   → 大粒子，明显但碰撞多
 ```
 
-### Q: 粒子太小或太大
-A: 调整 `particleRadius` 参数
+### 3. 向心力 (cohesionForce)
+```cpp
+1.0-3.0   → 松散，像水滴
+4.0-6.0   → 适中，保持形状 ✅ 推荐
+7.0-15.0  → 紧密，像果冻
+```
 
-## 📊 性能建议
+### 4. 阻尼系数 (damping)
+```cpp
+0.95      → 高阻尼，快速停止
+0.98      → 适中 ✅ 推荐
+0.995     → 低阻尼，持续运动
+```
 
-- 在调试时使用较少的粒子（20-30）
-- 正式场景可以使用更多粒子（50-80）
-- 每个场景建议不超过 2-3 个史莱姆对象
-- 粒子总数建议控制在 200 以内
+**重要**：阻尼只影响水平速度，不影响垂直下落（重力正常工作）
 
-## 🚀 下一步优化方向
+---
 
-1. **表面重建**：使用 Marching Cubes 算法生成光滑的史莱姆表面
-2. **颜色变化**：根据压力或速度改变史莱姆颜色
-3. **分裂合并**：实现史莱姆的分裂和合并效果
-4. **交互**：添加玩家可以"戳"史莱姆的功能
+## 🔧 物理属性（在 slime.cpp 中）
+
+```cpp
+// initParticles() 中的设置
+friction = 0.05f        // 极低摩擦力，实现流动性
+bounciness = 0.5f       // 中等弹性
+linearDamping = 0.1f    // 物理引擎的空气阻力
+massDensity = 1.0f      // 质量密度
+```
+
+---
+
+## 📊 常见效果配置
+
+### 水滴效果（分散、流动）
+```cpp
+Slime* slime = new Slime(this, glm::vec3(0.0f, 5.0f, 0.0f), 40, 0.12f, 1.5f, shader, tex);
+slime->setCohesionForce(2.0f);
+slime->setDamping(0.99f);
+```
+
+### 果冻效果（弹性、晃动）
+```cpp
+Slime* slime = new Slime(this, glm::vec3(0.0f, 5.0f, 0.0f), 50, 0.10f, 1.0f, shader, tex);
+slime->setCohesionForce(8.0f);
+slime->setDamping(0.96f);
+```
+
+### 黏稠效果（紧密、慢速）
+```cpp
+Slime* slime = new Slime(this, glm::vec3(0.0f, 5.0f, 0.0f), 60, 0.08f, 0.8f, shader, tex);
+slime->setCohesionForce(12.0f);
+slime->setDamping(0.93f);
+```
+
+---
+
+## ⚠️ 常见问题
+
+### Q: 粒子飞散开了
+**A**: 增加向心力
+```cpp
+slime->setCohesionForce(10.0f);  // 从 6.0 增加到 10.0
+```
+
+### Q: 粒子粘成一团，不流动
+**A**: 已修复！确保使用最新代码（摩擦力 = 0.05）
+
+### Q: 下落太慢
+**A**: 已修复！阻尼现在只影响水平速度，垂直下落不受影响
+
+### Q: 粒子穿透地板
+**A**: 确保地板有物理属性：
+```cpp
+floor->initPhysics(Object::PhysicsType::STATIC, 
+                   Object::CollisionShape::PLANE, 
+                   glm::vec3(50.0f, 0.2f, 50.0f));
+```
+
+---
+
+## 🧮 关键技术点
+
+### 1. 阻尼系统
+```cpp
+// 只对水平速度应用阻尼（不影响重力）
+glm::vec3 horizontalVel(vel.x, 0.0f, vel.z);
+horizontalVel *= m_damping;  // 只阻尼水平运动
+
+// 垂直速度保持不变
+glm::vec3 newVel(horizontalVel.x, vel.y, horizontalVel.z);
+```
+
+### 2. 向心力
+```cpp
+// 计算指向中心的力
+glm::vec3 toCenter = center - position;
+float distance = glm::length(toCenter);
+
+// 力 = 向心力系数 × 距离（有最大作用距离限制）
+glm::vec3 force = normalize(toCenter) * cohesionForce * distance;
+```
+
+### 3. 低摩擦力
+```cpp
+// 极低的摩擦力实现液态流动性
+setFrictionCoefficient(0.05f);  // 而不是默认的 0.5
+```
+
+---
+
+## 💡 性能优化建议
+
+- 调试时：30-40 粒子
+- 正式场景：50-70 粒子
+- 不建议超过 100 粒子
+- 每个场景 2-3 个史莱姆最佳
+
+---
+
+## 📁 相关代码文件
+
+```
+engine/object/slime.h         - 史莱姆类定义
+engine/object/slime.cpp       - 史莱姆类实现
+engine/engine.cpp             - 创建史莱姆的示例
+assets/shaders/slime_*.glsl   - 液态着色器（可选，未启用）
+```
+
+---
+
+## 🎉 完成状态
+
+✅ 粒子物理系统
+✅ 碰撞检测
+✅ 向心力
+✅ 流动性优化（低摩擦）
+✅ 阻尼修复（不影响重力）
+✅ 参数可调节
+
+**当前渲染**：每个粒子作为球体渲染，可见物理效果
+**未来扩展**：表面重建（Marching Cubes）生成光滑网格
+
+---
+
+**使用提示**：按 `Alt` 键切换鼠标捕获，WASD 移动相机，观察史莱姆的下落和聚合效果。

@@ -1,14 +1,17 @@
-#ifndef CAMERA_H
+﻿#ifndef CAMERA_H
 #define CAMERA_H
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+// 前向声明
+class Object;
+
 /**
  * @class Camera
- * @brief ����࣬����OpenGL��Ⱦ�����й�����ͼ��ͶӰ����
+ * @brief 相机类，用于OpenGL渲染引擎中管理视图和投影矩阵。
  *
- * ֧�ִ�ͳ LookAt ��� + ��ѡ FPS ������ת�����Yaw / Pitch / Roll��
+ * 支持传统 LookAt 相机 + 可选 FPS 自由旋转相机（Yaw / Pitch / Roll）
  */
 class Camera {
 public:
@@ -42,7 +45,7 @@ public:
         float bottom, float top,
         float near, float far);
 
-    // ===== FPS Camera ��չ����������Ӱ��ɽӿڣ� =====
+    // ===== FPS Camera 扩展（新增，不影响旧接口） =====
     void enableFPS(bool enable);
 
     void setYaw(float yaw);
@@ -59,8 +62,24 @@ public:
     void moveRight(float delta);
     void moveUpFPS(float delta);
 
+    // ===== LookAt 方法（新增） =====
+
+    /**
+     * @brief 使相机看向指定坐标
+     * @param target 目标坐标
+     * @param smooth 是否平滑过渡（默认false，立即转向）
+     */
+    void lookAt(const glm::vec3& target, bool smooth = false);
+
+    /**
+     * @brief 使相机看向指定游戏对象
+     * @param object 目标对象指针
+     * @param smooth 是否平滑过渡（默认false，立即转向）
+     */
+    void lookAt(const Object* object, bool smooth = false);
+
 private:
-    // ===== ԭ�г�Ա =====
+    // ===== 原有成员 =====
     glm::vec3 m_position;
     glm::vec3 m_target;
     glm::vec3 m_up;
@@ -75,7 +94,7 @@ private:
 
     void updateProjection();
 
-    // ===== FPS Camera ��Ա�������� =====
+    // ===== FPS Camera 成员（新增） =====
     bool m_useFPS = false;
 
     float m_yaw = -90.0f;
