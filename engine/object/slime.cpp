@@ -21,7 +21,13 @@ Slime::Slime(Engine* engine, const glm::vec3& center, int numParticles,
       m_coreParticleIndex(-1),   // ✅ 初始化中心粒子索引
       m_forceRadius(1.5f),       // ✅ 默认力作用半径
       m_verticalBias(2.0f),      // ✅ 默认垂直偏好权重
-      m_gravityBoost(5.0f)       // ✅ 默认额外重力强度
+      m_gravityBoost(5.0f),      // ✅ 默认额外重力强度
+      // ✅ 初始化新参数
+      m_repulsionForce(20.0f),           // 排斥力强度（防止过度聚集）
+      m_repulsionRadius(0.18f),          // 排斥力半径（略大于粒子直径）
+      m_surfaceTension(2.0f),            // 表面张力
+      m_viscosity(0.5f),                 // 流体粘度
+      m_restDensity(0.16f)               // 静止密度（目标粒子间距）
 {
     // 初始化粒子网格
     initMesh();
@@ -65,7 +71,7 @@ void Slime::initParticles(float initialRadius) {
     
     // ✅ 改进的初始化：确保粒子均匀分布，不重叠
     int particlesCreated = 0;
-    int maxAttempts = m_numParticles * 10;  // 最大尝试次数
+    int maxAttempts = m_numParticles * 10;
     int attempts = 0;
     
     while (particlesCreated < m_numParticles && attempts < maxAttempts) {
@@ -75,14 +81,14 @@ void Slime::initParticles(float initialRadius) {
         glm::vec3 randomOffset;
         do {
             randomOffset = glm::vec3(dis(gen), dis(gen), dis(gen));
-        } while (glm::length(randomOffset) > 1.0f);  // 确保在单位球内
+        } while (glm::length(randomOffset) > 1.0f);
         
         randomOffset *= initialRadius;
         glm::vec3 newPosition = m_center + randomOffset;
         
         // ✅ 检查是否与已有粒子重叠
         bool tooClose = false;
-        float minDistance = m_particleRadius * 2.1f;  // 最小间距（略大于直径）
+        float minDistance = m_particleRadius * 2.1f;
         
         for (int j = 0; j < particlesCreated; ++j) {
             float dist = glm::length(m_particles[j].position - newPosition);
@@ -109,23 +115,23 @@ void Slime::initParticles(float initialRadius) {
             rp3d::Transform colliderTransform = rp3d::Transform::identity();
             p.collider = p.rigidBody->addCollider(m_sphereShape, colliderTransform);
             
-            // 设置质量和物理属性 - 优化流动性
-            p.collider->getMaterial().setMassDensity(1.0f);
-            p.collider->getMaterial().setBounciness(0.5f);  // 增加弹性
-            p.collider->getMaterial().setFrictionCoefficient(0.05f);  // 极低摩擦力
+            // ✅ 优化物理属性 - 极低摩擦力和高弹性
+            p.collider->getMaterial().setMassDensity(0.8f);        // 降低密度，更轻盈
+            p.collider->getMaterial().setBounciness(0.7f);         // 提高弹性
+            p.collider->getMaterial().setFrictionCoefficient(0.01f); // 极低摩擦
             p.rigidBody->updateMassPropertiesFromColliders();
             
             // 启用重力
             p.rigidBody->enableGravity(true);
             
-            // 设置线性阻尼（空气阻力）
-            p.rigidBody->setLinearDamping(0.1f);
+            // ✅ 降低线性阻尼（空气阻力）
+            p.rigidBody->setLinearDamping(0.05f);  // 从 0.1 降到 0.05
             
             particlesCreated++;
         }
     }
     
-    // 如果无法创建足够的粒子（空间太小），调整数组大小
+    // 如果无法创建足够的粒子，调整数组大小
     if (particlesCreated < m_numParticles) {
         std::cout << "警告：只创建了 " << particlesCreated << " / " << m_numParticles 
                   << " 个粒子（空间不足或半径太大）" << std::endl;
@@ -165,11 +171,14 @@ void Slime::update(float deltaTime) {
     // 2. 更新几何中心（质心）
     updateCenter();
     
-    // 3. ✅ 更新中心粒子（动态选择最靠近质心的粒子）
+    // 3. 更新中心粒子（动态选择最靠近质心的粒子）
     updateCoreParticle();
     
-    // 4. 应用向心力
-    applyForces(deltaTime);
+    // 4. ✅ 应用多种力（按顺序）
+    applyRepulsionForces(deltaTime);    // 排斥力（防止过度聚集）
+    applyForces(deltaTime);             // 向心力（维持形态）
+    applySurfaceTension(deltaTime);     // 表面张力（表面粒子内聚）
+    applyViscosity(deltaTime);          // 粘度（速度同步）
     
     // 更新父类位置为中心点
     m_position = m_center;
@@ -241,7 +250,7 @@ void Slime::updateCoreParticle() {
 void Slime::applyForces(float deltaTime) {
     float maxCohesionDistance = this->m_maxCohesionDistance;
     
-    // ✅ 时间独立的力缩放因子（防止时间步长波动影响力的大小）
+    // 时间独立的力缩放因子
     const float targetDeltaTime = 1.0f / 60.0f;
     float timeScale = deltaTime / targetDeltaTime;
     timeScale = glm::clamp(timeScale, 0.1f, 3.0f);
@@ -249,7 +258,7 @@ void Slime::applyForces(float deltaTime) {
     for (auto& particle : m_particles) {
         if (!particle.rigidBody) continue;
         
-        // 计算指向中心的向心力
+        // ✅ 优化向心力计算：使用平方根衰减代替线性衰减
         glm::vec3 toCenter = m_center - particle.position;
         float distance = glm::length(toCenter);
         
@@ -257,30 +266,15 @@ void Slime::applyForces(float deltaTime) {
         if (distance > 0.001f && distance < maxCohesionDistance) {
             glm::vec3 cohesionDirection = glm::normalize(toCenter);
             
-            // 距离越远，力越小
-            float forceMagnitude = m_cohesionForce / (distance + 0.1f);
+            // ✅ 改进的力计算：使用平方根衰减，避免近距离力度过大
+            float normalizedDistance = distance / maxCohesionDistance;
+            float forceMagnitude = m_cohesionForce * glm::sqrt(normalizedDistance);
             
-            // 力与时间步长无关
             glm::vec3 cohesionForceVec = cohesionDirection * forceMagnitude * timeScale;
             
-            // 应用力到刚体
             rp3d::Vector3 rp3dForce(cohesionForceVec.x, cohesionForceVec.y, cohesionForceVec.z);
             particle.rigidBody->applyWorldForceAtCenterOfMass(rp3dForce);
         }
-        
-        // ✅ 全局生效：对高于质心的粒子施加额外的向下力
-        // 这个力与向心力一起作用，持续压低上层粒子
-        /*
-        float verticalOffset = particle.position.y - m_center.y;
-        if (verticalOffset > 0.0f) {  // 只对质心上方的粒子施加
-            // 距离质心越高，向下力越强（线性关系）
-            float gravityMagnitude = m_gravityBoost * verticalOffset * timeScale;
-            glm::vec3 downwardForce(0.0f, -gravityMagnitude, 0.0f);
-            
-            rp3d::Vector3 rp3dGravityForce(downwardForce.x, downwardForce.y, downwardForce.z);
-            particle.rigidBody->applyWorldForceAtCenterOfMass(rp3dGravityForce);
-        }
-        */
         
         // 如果粒子距离中心太远，强制拉回
         const float emergencyDistance = maxCohesionDistance * 2.7f;
@@ -292,31 +286,162 @@ void Slime::applyForces(float deltaTime) {
             rp3d::Vector3 rp3dEmergencyForce(emergencyForce.x, emergencyForce.y, emergencyForce.z);
             particle.rigidBody->applyWorldForceAtCenterOfMass(rp3dEmergencyForce);
             
-            // 大幅降低速度，防止继续飞出
             rp3d::Vector3 currentVel = particle.rigidBody->getLinearVelocity();
             particle.rigidBody->setLinearVelocity(currentVel * 0.3f);
         }
 
-        // ✅ 增强阻尼：对所有速度应用阻尼
+        // ✅ 降低阻尼强度，增加流动性
         rp3d::Vector3 currentVel = particle.rigidBody->getLinearVelocity();
-        
-        // 分离水平和垂直速度
         glm::vec3 vel(currentVel.x, currentVel.y, currentVel.z);
         glm::vec3 horizontalVel(vel.x, 0.0f, vel.z);
         float verticalVel = vel.y;
         
-        // 使用时间独立的阻尼系数
-        float frameDamping = glm::pow(m_damping, deltaTime * 60.0f);
+        // ✅ 降低水平阻尼（从 0.98 改为 0.99）
+        float frameDamping = glm::pow(0.99f, deltaTime * 60.0f);
         horizontalVel *= frameDamping;
         
-        // 垂直方向也应用一定的阻尼
+        // 垂直方向阻尼
         float verticalDamping = glm::pow(0.995f, deltaTime * 60.0f);
         verticalVel *= verticalDamping;
         
-        // 重新组合速度
         glm::vec3 newVel(horizontalVel.x, verticalVel, horizontalVel.z);
         particle.rigidBody->setLinearVelocity(rp3d::Vector3(newVel.x, newVel.y, newVel.z));
     }
+}
+
+// ✅ 新增方法：应用粒子间排斥力（防止过度聚集）
+void Slime::applyRepulsionForces(float deltaTime) {
+    const float targetDeltaTime = 1.0f / 60.0f;
+    float timeScale = deltaTime / targetDeltaTime;
+    timeScale = glm::clamp(timeScale, 0.1f, 3.0f);
+    
+    // 使用简单的 O(n²) 算法（对于几百个粒子足够快）
+    for (size_t i = 0; i < m_particles.size(); ++i) {
+        auto& p1 = m_particles[i];
+        if (!p1.rigidBody) continue;
+        
+        glm::vec3 totalRepulsion(0.0f);
+        
+        for (size_t j = i + 1; j < m_particles.size(); ++j) {
+            auto& p2 = m_particles[j];
+            if (!p2.rigidBody) continue;
+            
+            glm::vec3 diff = p1.position - p2.position;
+            float distance = glm::length(diff);
+            
+            // 只有距离小于排斥半径时才施加排斥力
+            if (distance > 0.001f && distance < m_repulsionRadius) {
+                glm::vec3 direction = glm::normalize(diff);
+                
+                // 距离越近，排斥力越强（指数衰减）
+                float repulsionStrength = m_repulsionForce * glm::pow((m_repulsionRadius - distance) / m_repulsionRadius, 2.0f);
+                
+                glm::vec3 repulsionForce = direction * repulsionStrength * timeScale;
+                
+                // 牛顿第三定律：作用力与反作用力
+                rp3d::Vector3 force1(repulsionForce.x, repulsionForce.y, repulsionForce.z);
+                rp3d::Vector3 force2(-repulsionForce.x, -repulsionForce.y, -repulsionForce.z);
+                
+                p1.rigidBody->applyWorldForceAtCenterOfMass(force1);
+                p2.rigidBody->applyWorldForceAtCenterOfMass(force2);
+            }
+        }
+    }
+}
+
+// ✅ 新增方法：应用表面张力（表面粒子相互吸引）
+void Slime::applySurfaceTension(float deltaTime) {
+    const float targetDeltaTime = 1.0f / 60.0f;
+    float timeScale = deltaTime / targetDeltaTime;
+    timeScale = glm::clamp(timeScale, 0.1f, 3.0f);
+    
+    for (auto& particle : m_particles) {
+        if (!particle.rigidBody) continue;
+        
+        // 计算局部密度（周围粒子数量）
+        int neighborCount = 0;
+        glm::vec3 avgNeighborPos(0.0f);
+        
+        for (const auto& other : m_particles) {
+            if (&other == &particle) continue;
+            
+            float distance = glm::length(other.position - particle.position);
+            if (distance < m_repulsionRadius * 2.0f) {
+                neighborCount++;
+                avgNeighborPos += other.position;
+            }
+        }
+        
+        // 如果是表面粒子（邻居少），施加表面张力
+        if (neighborCount > 0 && neighborCount < 8) {  // 邻居数阈值
+            avgNeighborPos /= static_cast<float>(neighborCount);
+            
+            glm::vec3 toAvg = avgNeighborPos - particle.position;
+            float distance = glm::length(toAvg);
+            
+            if (distance > 0.001f) {
+                glm::vec3 tensionForce = glm::normalize(toAvg) * m_surfaceTension * timeScale;
+                
+                rp3d::Vector3 rp3dForce(tensionForce.x, tensionForce.y, tensionForce.z);
+                particle.rigidBody->applyWorldForceAtCenterOfMass(rp3dForce);
+            }
+        }
+    }
+}
+
+// ✅ 新增方法：应用流体粘度（速度同步）
+void Slime::applyViscosity(float deltaTime) {
+    const float targetDeltaTime = 1.0f / 60.0f;
+    float timeScale = deltaTime / targetDeltaTime;
+    timeScale = glm::clamp(timeScale, 0.1f, 3.0f);
+    
+    for (auto& particle : m_particles) {
+        if (!particle.rigidBody) continue;
+        
+        glm::vec3 avgVelocity(0.0f);
+        int neighborCount = 0;
+        
+        // 计算邻居的平均速度
+        for (const auto& other : m_particles) {
+            if (&other == &particle) continue;
+            
+            float distance = glm::length(other.position - particle.position);
+            if (distance < m_repulsionRadius * 2.5f) {
+                avgVelocity += other.velocity;
+                neighborCount++;
+            }
+        }
+        
+        if (neighborCount > 0) {
+            avgVelocity /= static_cast<float>(neighborCount);
+            
+            // 向平均速度靠拢（粘度效应）
+            glm::vec3 velocityDiff = avgVelocity - particle.velocity;
+            glm::vec3 viscosityForce = velocityDiff * m_viscosity * timeScale;
+            
+            rp3d::Vector3 rp3dForce(viscosityForce.x, viscosityForce.y, viscosityForce.z);
+            particle.rigidBody->applyWorldForceAtCenterOfMass(rp3dForce);
+        }
+    }
+}
+
+// ✅ 新增辅助方法：计算局部密度
+float Slime::calculateLocalDensity(int particleIndex) {
+    if (particleIndex < 0 || particleIndex >= static_cast<int>(m_particles.size())) {
+        return 0.0f;
+    }
+    
+    const glm::vec3& pos = m_particles[particleIndex].position;
+    int neighborCount = 0;
+    
+    for (const auto& other : m_particles) {
+        float distance = glm::length(other.position - pos);
+        if (distance > 0.001f && distance < m_repulsionRadius * 2.0f) {
+            neighborCount++;
+        }
+    }
+    
+    return static_cast<float>(neighborCount);
 }
 
 void Slime::render() const {

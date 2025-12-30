@@ -243,19 +243,27 @@ void Engine::setupDemoData()
     scene->addObject(sphere);
 
 	// 创建 slime 对象
-	// 优化参数：减少粒子数量，增大半径，提高流动性
-	Slime* slime = new Slime(this, glm::vec3(-2.0f, -3.0f, 0.0f), 280, 0.08f, 2.0f, sphereShader, texture2);
-    slime->setCohesionForce(2.35f);    // 适中的向心力
-    slime->setDamping(0.95f);         // 适中的阻尼
-    slime->setMaxCohesionDistance(2.5f); // 增大向心力作用距离
-    slime->setForceRadius(1.2f);     // 力作用半径
-    slime->setVerticalBias(2.0f);    // 垂直偏好（2.0 = 中等偏向下方）
-    slime->setGravityBoost(5.0f);    // 额外重力强度
+	// 优化参数：减少粒子数量，增大粒子半径，提高流动性
+	Slime* slime = new Slime(this, glm::vec3(-2.0f, -3.0f, 0.0f), 200, 0.1f, 2.2f, sphereShader, texture2);
+    
+    // 优化力学参数
+    slime->setCohesionForce(1.25f);           // 降低向心力
+    slime->setDamping(0.98f);                // 降低阻尼
+    slime->setMaxCohesionDistance(3.0f);     // 增大向心力作用距离
+    slime->setForceRadius(1.5f);             // 力作用半径
+    slime->setVerticalBias(1.5f);            // 降低垂直偏好
+    
+    slime->setRepulsionForce(30.0f);         // 排斥力强度
+    slime->setRepulsionRadius(0.22f);        // 排斥力半径
+    slime->setSurfaceTension(3.0f);          // 表面张力
+    slime->setViscosity(0.3f);               // 流体粘度
+    slime->setRestDensity(0.2f);             // 静止密度
+    
     scene->addObject(slime);
     
     // ✅ 绑定史莱姆到玩家控制器
     playerController->setControlledObject(slime);
-    playerController->setMoveSpeed(5.0f);  // 降低移动力度
+    playerController->setMoveSpeed(8.0f);    // 提高移动力度（从5改为8）
 }
 
 void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
