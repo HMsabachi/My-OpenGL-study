@@ -15,6 +15,7 @@
 
 
 #include "camera.h"
+#include "playerController.h"  // 添加 PlayerController 头文件
 
 #include "../application/stb_image.h" // 加载图片
 
@@ -49,8 +50,22 @@ void setAcceleration(glm::vec3& acceleration)
 void Engine::update()
 {
     float deltaTime = myApp->getDeltaTime();
-    setAcceleration(this->cameraData.acceleration);
-    this->updateCamera(deltaTime);
+    
+    // 根据控制模式决定如何更新
+    if (playerController->getControlMode() == PlayerController::ControlMode::CAMERA) {
+        // 摄像机控制模式
+        setAcceleration(this->cameraData.acceleration);
+        this->updateCamera(deltaTime);
+    } else {
+        // 物体控制模式 - 摄像机可以旋转但不移动
+        auto mOffset = myApp->getMouseMoveDistance();
+        if (mouseCaptured) {
+            camera->processMouseMovement(mOffset.x, -mOffset.y);
+        }
+    }
+    
+    // 更新玩家控制器
+    playerController->update(deltaTime);
 
     if (glfwGetKey(myApp->getWindow(), GLFW_KEY_Z) == GLFW_PRESS)
     {
@@ -114,19 +129,22 @@ Engine::Engine() {
 }
 
 Engine::~Engine() {
-    // 正确的资源释放顺序：
     
-    // 1. 首先删除场景
+    // 1. 删除玩家控制器
+    delete playerController;
+    playerController = nullptr;
+    
+    // 2. 删除场景
     delete scene;
     scene = nullptr;
     
-    // 2. 销毁物理世界
+    // 3. 销毁物理世界
     if (pWorld) {
         physicsCommon.destroyPhysicsWorld(pWorld);
         pWorld = nullptr;
     }
     
-    // 3. 删除 OpenGL 相关资源
+    // 4. 删除 OpenGL 相关资源
     delete vao;
     vao = nullptr;
     
@@ -136,15 +154,15 @@ Engine::~Engine() {
     glDeleteTextures(1, &texture);
     glDeleteTextures(1, &texture2);
     
-    // 4. 删除纹理管理器
+    // 5. 删除纹理管理器
     delete textureManager;
     textureManager = nullptr;
     
-    // 5. 删除相机
+    // 6. 删除相机
     delete camera;
     camera = nullptr;
     
-    // 6. 最后销毁 OpenGL 上下文
+    // 7. 最后销毁 OpenGL 上下文
     myApp->destroy();
 }
 
@@ -214,11 +232,15 @@ void Engine::setupDemoData()
 
 	// 创建 slime 对象
 	// 优化参数：减少粒子数量，增大半径，提高流动性
-	Slime* slime = new Slime(this, glm::vec3(-2.0f, -3.0f, 0.0f), 70, 0.08f, 1.5f, sphereShader, texture2);
-    slime->setCohesionForce(0.1f);    // 适中的向心力
-    slime->setDamping(0.98f);         // 适中的阻尼
-    slime->setMaxCohesionDistance(1.5f); // 增大向心力作用距离
+	Slime* slime = new Slime(this, glm::vec3(-2.0f, -3.0f, 0.0f), 280, 0.08f, 2.0f, sphereShader, texture2);
+    slime->setCohesionForce(1.35f);    // 适中的向心力
+    slime->setDamping(0.83f);         // 适中的阻尼
+    slime->setMaxCohesionDistance(2.5f); // 增大向心力作用距离
     scene->addObject(slime);
+    
+    // ✅ 绑定史莱姆到玩家控制器
+    playerController->setControlledObject(slime);
+    playerController->setMoveSpeed(10.0f);  // 大幅增加移动力度（从 50 增加到 500）
 }
 
 void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
@@ -288,6 +310,11 @@ void Engine::keyCallback(int key, int action, int mods)
             self->mouseCaptured = !self->mouseCaptured;
             glfwSetInputMode(window, GLFW_CURSOR, self->mouseCaptured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
             break;
+        
+        case GLFW_KEY_C:
+            // ✅ 按 C 键切换控制模式
+            self->playerController->toggleControlMode();
+            break;
     }
     
 }
@@ -296,7 +323,7 @@ int Engine::init() {
     this->_initOpenGL();
     textureManager = new TextureManager();
     shaderManager = new ShaderManager();
-    camera = new Camera(glm::vec3(-2.0f, -3.0f, 3.0f));
+    camera = new Camera(glm::vec3(-2.0f, -3.0f, 3.0f), glm::vec3(-2.0f, -4.0f, 0.0f));
     camera->enableFPS(true);
     shaderManager->loadShader("basic", "assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
     shaderManager->loadShader("sphere", "assets/shaders/sphere_vertex.glsl", "assets/shaders/sphere_fragment.glsl");
@@ -311,6 +338,10 @@ int Engine::init() {
     
     // 创建场景管理器
     scene = new Scene(this);
+    
+    //  创建玩家控制器
+    playerController = new PlayerController(this, camera);
+
 
     return 0;
 }

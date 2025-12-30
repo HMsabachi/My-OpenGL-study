@@ -265,3 +265,13 @@ bool Slime::collideWith(const Object& other) const {
     // 碰撞由物理引擎处理
     return false;
 }
+
+void Slime::applyForce(const glm::vec3& force) {
+    // 对所有粒子施加相同的力
+    for (auto& particle : m_particles) {
+        if (particle.rigidBody) {
+            rp3d::Vector3 rp3dForce(force.x, force.y, force.z);
+            particle.rigidBody->applyWorldForceAtCenterOfMass(rp3dForce);
+        }
+    }
+}

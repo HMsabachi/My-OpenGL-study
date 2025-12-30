@@ -87,3 +87,13 @@ bool Plane::collideWith(const Object& other) const {
     // 由物理引擎处理碰撞
     return false;
 }
+
+void Plane::applyForce(const glm::vec3& force) {
+    // 平面通常是静态对象，不接受力
+    // 如果有物理刚体且是动态的，可以施加力
+    if (m_rigidBody && m_physicsType == PhysicsType::DYNAMIC) {
+        rp3d::Vector3 rp3dForce(force.x, force.y, force.z);
+        m_rigidBody->applyWorldForceAtCenterOfMass(rp3dForce);
+    }
+    // 静态或运动学物体不响应力
+}

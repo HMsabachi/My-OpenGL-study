@@ -23,6 +23,9 @@ public:
     bool collideWith(const Object& other) const override;
 
     void setRotation(float angle, const glm::vec3& axis);
+    
+    // 实现 applyForce
+    void applyForce(const glm::vec3& force) override;
 
 private:
     glm::vec3 m_size;

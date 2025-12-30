@@ -60,6 +60,9 @@ public:
     void setDamping(float damping) { m_damping = damping; }
 	void setMaxCohesionDistance(float distance) { m_maxCohesionDistance = distance; }
     
+    // 施加外力到所有粒子
+    void applyForce(const glm::vec3& force);
+    
     // 获取粒子信息
     const std::vector<Particle>& getParticles() const { return m_particles; }
     int getParticleCount() const { return m_particles.size(); }

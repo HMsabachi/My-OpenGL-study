@@ -116,7 +116,7 @@ public:
     virtual void initPhysics(PhysicsType type, CollisionShape shape, const glm::vec3& shapeSize, float mass = 1.0f);
     
     /**
-     * 从物理引擎同步变换信息到渲染
+     * 从物理引擎同步变換信息到渲染
      */
     void syncFromPhysics();
     
@@ -134,6 +134,12 @@ public:
      * 获取碰撞体指针
      */
     rp3d::Collider* getCollider() const { return m_collider; }
+    
+    /**
+     * 施加力到物体（纯虚函数，子类必须实现）
+     * @param force 施加的力向量
+     */
+    virtual void applyForce(const glm::vec3& force) = 0;
 
 protected:
     Engine* m_engine;          // 游戏引擎实例

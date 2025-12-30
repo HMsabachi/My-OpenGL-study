@@ -60,6 +60,16 @@ void Sphere::render() const {
 }
 
 bool Sphere::collideWith(const Object& other) const {
-    // 由物理引擎处理碰撞
+    // 简单的球体碰撞检测占位符
+    // 如果使用物理引擎，由物理引擎处理碰撞
     return false;
+}
+
+void Sphere::applyForce(const glm::vec3& force) {
+    // 如果有物理刚体，施加力
+    if (m_rigidBody) {
+        rp3d::Vector3 rp3dForce(force.x, force.y, force.z);
+        m_rigidBody->applyWorldForceAtCenterOfMass(rp3dForce);
+    }
+    // 如果没有物理体，什么也不做
 }

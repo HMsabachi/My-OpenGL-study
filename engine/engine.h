@@ -15,6 +15,7 @@ class Cube; // 前向声明
 class Sphere; // 前向声明
 class Plane; // 前向声明
 class Scene; // 前向声明
+class PlayerController; // 前向声明
 
 class Engine {
 public:
@@ -24,6 +25,7 @@ public:
 public:
 	ShaderManager* shaderManager{nullptr};
 	Scene* scene{nullptr};  // 场景管理器
+	PlayerController* playerController{nullptr};  // 玩家控制器
 
 public:
 	bool mouseCaptured{ false };

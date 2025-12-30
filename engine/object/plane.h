@@ -36,6 +36,9 @@ public:
      * @brief 设置纹理重复次数
      */
     void setTextureRepeat(float repeatX, float repeatZ);
+    
+    // 实现 applyForce
+    void applyForce(const glm::vec3& force) override;
 
 private:
     glm::vec2 m_size;           // 平面尺寸

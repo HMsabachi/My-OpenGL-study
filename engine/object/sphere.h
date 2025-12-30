@@ -21,6 +21,9 @@ public:
     void render() const override;
     bool collideWith(const Object& other) const override;
 
+    // 实现 applyForce
+    void applyForce(const glm::vec3& force) override;
+
 private:
     float m_radius;
     Shader* m_shader;

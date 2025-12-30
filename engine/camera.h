@@ -62,6 +62,10 @@ public:
     void moveRight(float delta);
     void moveUpFPS(float delta);
 
+    // 获取方向向量
+    glm::vec3 getFront() const { return m_front; }
+    glm::vec3 getRight() const { return m_right; }
+
     // ===== LookAt 方法（新增） =====
 
     /**
