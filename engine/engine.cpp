@@ -22,6 +22,7 @@
 #include "object/cube.h" // 引入Cube类
 #include "object/sphere.h" // 引入Sphere类
 #include "object/plane.h" // 引入Plane类
+#include "object/slime.h" // 引入Slime类
 #include "scene.h" // 引入Scene类
 
 #define Ptr std::shared_ptr
@@ -205,9 +206,15 @@ void Engine::setupDemoData()
     Sphere* sphere = new Sphere(this, glm::vec3(3.0f, 0.0f, 0.0f), 1.0f, sphereShader, texture2);
     sphere->initPhysics(Object::PhysicsType::DYNAMIC, Object::CollisionShape::SPHERE, glm::vec3(1.0f), 1.0f);
     scene->addObject(sphere);
+
+	// 创建 slime 对象
+	Slime* slime = new Slime(this, glm::vec3(0.0f, 5.0f, 0.0f), 30, 0.15f, 1.0f, sphereShader, texture2);
+    slime->setCohesionForce(8.0f);
+    slime->setDamping(0.9f);
+    scene->addObject(slime);
 }
 
-void Engine::updateGlobalUniforms()
+void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
 {
     glm::mat4 viewMatrix = camera->getViewMatrix();
     glm::mat4 projectionMatrix = camera->getProjectionMatrix();
