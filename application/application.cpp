@@ -1,4 +1,4 @@
-#include "application.h"
+ï»¿#include "application.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <string>
@@ -38,19 +38,19 @@ bool Application::init(const int& width, const int& height) {
 		std::cerr << "Failed to initialize GLAD" << std::endl;
 		return false;
 	}
-	// ÉèÖÃ´°¿Ú´óĞ¡»Øµ÷º¯Êı
+	// è®¾ç½®çª—å£å¤§å°å›è°ƒå‡½æ•°
 	glfwSetFramebufferSizeCallback(mWindow, frameBufferSizeCallback);
 
-	// ÉèÖÃ´°¿ÚÓÃ»§Ö¸ÕëÎªµ±Ç°Ó¦ÓÃ³ÌĞòÊµÀı
+	// è®¾ç½®çª—å£ç”¨æˆ·æŒ‡é’ˆä¸ºå½“å‰åº”ç”¨ç¨‹åºå®ä¾‹
 	glfwSetWindowUserPointer(mWindow, this);
 
-	// ÉèÖÃ¼üÅÌÊäÈë»Øµ÷º¯Êı
+	// è®¾ç½®é”®ç›˜è¾“å…¥å›è°ƒå‡½æ•°
 	glfwSetKeyCallback(mWindow, keyCallback);
 
-	// ÉèÖÃÊó±ê°´Å¥ÊäÈë»Øµ÷º¯Êı
+	// è®¾ç½®é¼ æ ‡æŒ‰é’®è¾“å…¥å›è°ƒå‡½æ•°
 	glfwSetMouseButtonCallback(mWindow, mouseButtonCallback);
 
-	// ÉèÖÃ¹öÂÖÊäÈë»Øµ÷º¯Êı
+	// è®¾ç½®æ»šè½®è¾“å…¥å›è°ƒå‡½æ•°
 	//glfwSetScrollCallback(mWindow, scrollCallback);
 
 
@@ -68,7 +68,20 @@ void Application::setMouse(int x, int y)
 void Application::updateDeltaTime() {
 	currentTime = glfwGetTime();
 	deltaTime = currentTime - lastFrameTime;
+	
+	// âœ… ä¿®å¤ï¼šé™åˆ¶ deltaTime ä¸Šé™ï¼Œé˜²æ­¢çª—å£æš‚åœæ—¶çš„å¼‚å¸¸å€¼
+	const double maxDeltaTime = 0.1;  // æœ€å¤§æ—¶é—´æ­¥é•¿ï¼š100msï¼ˆç›¸å½“äº 10 FPSï¼‰
+	if (deltaTime > maxDeltaTime) {
+		deltaTime = maxDeltaTime;
+	}
+	
+	// âœ… é˜²æ­¢è´Ÿæ•°æˆ–é›¶ï¼ˆå¯èƒ½åœ¨æ—¶é—´å€’é€€æˆ–ç¬¬ä¸€å¸§æ—¶å‘ç”Ÿï¼‰
+	if (deltaTime <= 0.0) {
+		deltaTime = 0.016;  // é»˜è®¤ 60 FPS
+	}
+	
 	lastFrameTime = currentTime;
+	
 	if (currentTime - fpsRecordTime >= 0.5f) {
 		fpsRecordTime = currentTime;
 		fps = (uint32_t)(1.0f / deltaTime);
@@ -78,34 +91,34 @@ void Application::updateWindowTitle() {
 	std::string title = "LearnOpenGL - FPS: " + std::to_string(fps) + "  - dt: " + std::to_string(deltaTime);
 	glfwSetWindowTitle(mWindow, title.c_str());
 }
-void Application::updateStatus() { // ¸üĞÂÊó±êÎ»ÖÃºÍ´°¿ÚÎ»ÖÃ
+void Application::updateStatus() { // æ›´æ–°é¼ æ ‡ä½ç½®å’Œçª—å£ä½ç½®
 	glfwGetCursorPos(mWindow, &mMouseX, &mMouseY);
 	glfwGetWindowPos(mWindow, &mWindowPosX, &mWindowPosY);
 }
 
 bool Application::update() {
-	if (glfwWindowShouldClose(mWindow)) return false; // ¼ì²é´°¿ÚÊÇ·ñÓ¦¸Ã¹Ø±Õ
-	// ¸üĞÂÓ¦ÓÃ³ÌĞò×´Ì¬
+	if (glfwWindowShouldClose(mWindow)) return false; // æ£€æŸ¥çª—å£æ˜¯å¦åº”è¯¥å…³é—­
+	// æ›´æ–°åº”ç”¨ç¨‹åºçŠ¶æ€
 	updateDeltaTime();
 	updateStatus();
 	updateWindowTitle();
-	// ¸üĞÂÓ¦ÓÃ³ÌĞòÂß¼­
+	// æ›´æ–°åº”ç”¨ç¨‹åºé€»è¾‘
 	glfwPollEvents();
-	// µ÷ÓÃÓÃ»§¶¨ÒåµÄ¸üĞÂº¯Êı
+	// è°ƒç”¨ç”¨æˆ·å®šä¹‰çš„æ›´æ–°å‡½æ•°
 	if(_updateFunction != nullptr)
 		_updateFunction();
 
-	// ·´×ª»º³åÇø
+	// åè½¬ç¼“å†²åŒº
 	glfwSwapBuffers(mWindow);
 	return true; 
 }
 
 void Application::destroy() {
-	glfwTerminate(); // ÖÕÖ¹ GLFW
+	glfwTerminate(); // ç»ˆæ­¢ GLFW
 }
 
 void Application::frameBufferSizeCallback(GLFWwindow* window, int width, int height) {
-	// ÉèÖÃ´°¿Ú´óĞ¡»Øµ÷º¯Êı
+	// è®¾ç½®çª—å£å¤§å°å›è°ƒå‡½æ•°
 	Application* self = (Application*) glfwGetWindowUserPointer(window);
 	self->mHeight = height;
 	self->mWidth = width;
@@ -114,7 +127,7 @@ void Application::frameBufferSizeCallback(GLFWwindow* window, int width, int hei
 	}
 }
 void Application::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) { 
-	// ÉèÖÃ¼üÅÌÊäÈë»Øµ÷º¯Êı
+	// è®¾ç½®é”®ç›˜è¾“å…¥å›è°ƒå‡½æ•°
 
 	if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GLFW_TRUE);

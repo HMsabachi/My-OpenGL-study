@@ -10,7 +10,7 @@ PlayerController::PlayerController(Engine* engine, Camera* camera)
       m_controlledObject(nullptr),
       m_controlMode(ControlMode::CAMERA),
       m_moveSpeed(5.0f),
-      m_moveForce(1.0f)  // 增大默认力度（从 100 改为 500）
+      m_moveForce(5.0f)  // 使用 m_moveSpeed 初始化
 {
 }
 
@@ -87,8 +87,8 @@ void PlayerController::updateObjectControl(float deltaTime) {
     if (glm::length(moveDirection) > 0.001f) {
         moveDirection = glm::normalize(moveDirection);
 
-        // ✅ 统一处理：调用对象的 applyForce 方法
-        glm::vec3 force = moveDirection * m_moveForce;
+        // ✅ 修复：使用 m_moveSpeed 而不是 m_moveForce
+        glm::vec3 force = moveDirection * m_moveSpeed;
         m_controlledObject->applyForce(force);
     }
 }

@@ -35,16 +35,28 @@ void Scene::removeObject(Object* object) {
 }
 
 void Scene::update(float deltaTime) {
+    // ✅ 修复：限制物理时间步长，防止窗口暂停时的巨大 deltaTime
+    const float maxPhysicsDeltaTime = 0.033f;  // 最大物理步长：约 30 FPS
+    const float minPhysicsDeltaTime = 0.001f;  // 最小物理步长：防止除零
+    
+    // 如果 deltaTime 异常大 限制到最大值
+    float physicsDeltaTime = deltaTime;
+    if (physicsDeltaTime > maxPhysicsDeltaTime) {
+        physicsDeltaTime = maxPhysicsDeltaTime;
+    }
+    if (physicsDeltaTime < minPhysicsDeltaTime) {
+        physicsDeltaTime = minPhysicsDeltaTime;
+    }
+    
     // 更新物理世界
     if (m_engine && m_engine->pWorld) {
-        // 固定时间步长更新物理引擎
-        m_engine->pWorld->update(deltaTime);
+        m_engine->pWorld->update(physicsDeltaTime);
     }
     
     // 更新所有活跃对象
     for (auto& obj : m_objects) {
         if (obj && obj->isActive()) {
-            obj->update(deltaTime);
+            obj->update(physicsDeltaTime);
         }
     }
 }

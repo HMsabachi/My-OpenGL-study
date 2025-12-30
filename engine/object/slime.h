@@ -13,9 +13,9 @@
  * 
  * 实现原理：
  * 1. 由多个小球体组成
- * 2. 每个球体有向中心点的吸引力
- * 3. 球体之间有碰撞
- * 4. 受重力影响
+ * 2. 动态选择中心粒子（最接近质心的粒子）
+ * 3. 力从中心粒子向外传播，距离越远力越小
+ * 4. 球体之间有碰撞和向心力
  */
 class Slime : public Object {
 public:
@@ -27,8 +27,9 @@ public:
         glm::vec3 velocity;      // 速度
         rp3d::RigidBody* rigidBody;  // 物理刚体
         rp3d::Collider* collider;    // 碰撞体
+        bool isCore;                 // 是否为核心粒子
         
-        Particle() : position(0.0f), velocity(0.0f), rigidBody(nullptr), collider(nullptr) {}
+        Particle() : position(0.0f), velocity(0.0f), rigidBody(nullptr), collider(nullptr), isCore(false) {}
     };
 
     /**
@@ -59,21 +60,39 @@ public:
     void setCohesionForce(float force) { m_cohesionForce = force; }
     void setDamping(float damping) { m_damping = damping; }
 	void setMaxCohesionDistance(float distance) { m_maxCohesionDistance = distance; }
+    void setForceRadius(float radius) { m_forceRadius = radius; }  // 设置力的作用半径
+    void setVerticalBias(float bias) { m_verticalBias = bias; }    // ✅ 设置垂直偏好（权重）
+    void setGravityBoost(float boost) { m_gravityBoost = boost; }  // ✅ 设置额外重力强度
     
-    // 施加外力到所有粒子
-    void applyForce(const glm::vec3& force);
+    // ✅ 施加外力（区域性，只影响中心附近的粒子）
+    void applyForce(const glm::vec3& force) override;
     
     // 获取粒子信息
     const std::vector<Particle>& getParticles() const { return m_particles; }
     int getParticleCount() const { return m_particles.size(); }
+    
+    // 获取中心粒子索引
+    int getCoreParticleIndex() const { return m_coreParticleIndex; }
+    
+    // ✅ 调试可视化开关
+    void setDebugVisualization(bool enable) { m_debugVisualization = enable; }
+    bool isDebugVisualizationEnabled() const { return m_debugVisualization; }
+    
+    // ✅ 未来：分裂功能接口（预留）
+    // Slime* split(float splitRatio = 0.5f);  // 按比例分裂史莱姆
 
 private:
     // 粒子系统
     std::vector<Particle> m_particles;        // 粒子列表
     int m_numParticles;                       // 粒子数量
     float m_particleRadius;                   // 粒子半径
-    glm::vec3 m_center;                       // 史莱姆中心点
+    glm::vec3 m_center;                       // 史莱姆几何中心（质心）
+    int m_coreParticleIndex;                  // ✅ 中心粒子索引
     float m_maxCohesionDistance = 0.5f;       // 向心力最大作用距离
+    float m_forceRadius = 1.5f;               // ✅ 外力作用半径（相对于中心粒子）
+    float m_verticalBias = 2.0f;              // ✅ 垂直偏好权重（越大越偏向下方）
+    float m_gravityBoost = 5.0f;              // ✅ 额外重力强度（施加给高于质心的粒子）
+    bool m_debugVisualization = false;        // ✅ 调试可视化开关
 
     // 力参数
     float m_cohesionForce;     // 向心力强度
@@ -98,9 +117,13 @@ private:
     void cleanupPhysics();
     
     // 更新方法
-    void updateCenter();                      // 更新中心点
-    void applyForces(float deltaTime);       // 应用力
-    void syncParticlesFromPhysics();         // 从物理引擎同步粒子位置
+    void updateCenter();                      // 更新几何中心（质心）
+    void updateCoreParticle();                // ✅ 更新中心粒子
+    void applyForces(float deltaTime);        // 应用向心力
+    void syncParticlesFromPhysics();          // 从物理引擎同步粒子位置
+    
+    // ✅ 计算粒子距离中心粒子的距离
+    float getDistanceFromCore(int particleIndex) const;
 };
 
 #endif // SLIME_H

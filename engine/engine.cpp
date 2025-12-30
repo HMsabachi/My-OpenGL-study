@@ -59,6 +59,18 @@ void Engine::update()
     } else {
         // 物体控制模式 - 摄像机可以旋转但不移动
         auto mOffset = myApp->getMouseMoveDistance();
+        
+        // ✅ 修复：限制鼠标移动距离，防止异常值
+        const float maxMouseMove = 50.0f;  // 降低最大合理的鼠标移动距离（从100改为50）
+        
+        // ✅ 如果移动距离异常大，直接忽略这一帧的鼠标输入
+        if (glm::length(mOffset) > maxMouseMove) {
+            mOffset = glm::vec2(0.0f);  // 重置为0，忽略异常输入
+        } else {
+            mOffset.x = glm::clamp(mOffset.x, -maxMouseMove, maxMouseMove);
+            mOffset.y = glm::clamp(mOffset.y, -maxMouseMove, maxMouseMove);
+        }
+        
         if (mouseCaptured) {
             camera->processMouseMovement(mOffset.x, -mOffset.y);
         }
@@ -233,14 +245,17 @@ void Engine::setupDemoData()
 	// 创建 slime 对象
 	// 优化参数：减少粒子数量，增大半径，提高流动性
 	Slime* slime = new Slime(this, glm::vec3(-2.0f, -3.0f, 0.0f), 280, 0.08f, 2.0f, sphereShader, texture2);
-    slime->setCohesionForce(1.35f);    // 适中的向心力
-    slime->setDamping(0.83f);         // 适中的阻尼
+    slime->setCohesionForce(2.35f);    // 适中的向心力
+    slime->setDamping(0.95f);         // 适中的阻尼
     slime->setMaxCohesionDistance(2.5f); // 增大向心力作用距离
+    slime->setForceRadius(1.2f);     // 力作用半径
+    slime->setVerticalBias(2.0f);    // 垂直偏好（2.0 = 中等偏向下方）
+    slime->setGravityBoost(5.0f);    // 额外重力强度
     scene->addObject(slime);
     
     // ✅ 绑定史莱姆到玩家控制器
     playerController->setControlledObject(slime);
-    playerController->setMoveSpeed(10.0f);  // 大幅增加移动力度（从 50 增加到 500）
+    playerController->setMoveSpeed(5.0f);  // 降低移动力度
 }
 
 void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
@@ -309,11 +324,17 @@ void Engine::keyCallback(int key, int action, int mods)
         case GLFW_KEY_LEFT_ALT:
             self->mouseCaptured = !self->mouseCaptured;
             glfwSetInputMode(window, GLFW_CURSOR, self->mouseCaptured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+            
+            // ✅ 修复：切换鼠标捕获状态时，重置鼠标位置记录，防止异常跳变
+            myApp->lastMousePos = myApp->getMousePos();
             break;
         
         case GLFW_KEY_C:
             // ✅ 按 C 键切换控制模式
             self->playerController->toggleControlMode();
+            
+            // ✅ 修复：切换控制模式时，重置鼠标位置记录，防止异常跳变
+            myApp->lastMousePos = myApp->getMousePos();
             break;
     }
     

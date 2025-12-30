@@ -34,6 +34,7 @@ public:
 
     // 移动参数
     void setMoveSpeed(float speed) { m_moveSpeed = speed; }
+	void setMoveForce(float force) { m_moveForce = force; }
     float getMoveSpeed() const { return m_moveSpeed; }
 
 private:
