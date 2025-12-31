@@ -5,48 +5,61 @@
 #include "../../glFrameWork/core.h"
 #include "../../glFrameWork/buffers.h"
 #include "../../glFrameWork/shader.h"
+#include "../../glFrameWork/texture.h"
 #include <vector>
-#include <memory>
+#include <unordered_map>
+#include <reactphysics3d/reactphysics3d.h>
 
 /**
- * @brief 史莱姆类 - 使用粒子系统模拟液体效果
+ * @brief 史莱姆类 - 使用改进的 PBF (Position Based Fluids) 算法模拟液态效果
  * 
- * 实现原理：
- * 1. 由多个小球体组成
- * 2. 动态选择中心粒子（最接近质心的粒子）
- * 3. 力从中心粒子向外传播，距离越远力越小
- * 4. 球体之间有碰撞和向心力
+ * 特性:
+ * - 改进的 PBF 粒子系统用于液态模拟
+ * - 通过 ReactPhysics3D 刚体代表史莱姆整体与其他物体交互
+ * - 粒子通过射线检测与环境碰撞
+ * - 实例化渲染优化性能
  */
 class Slime : public Object {
 public:
     /**
-     * @brief 史莱姆粒子结构（单个小球体）
+     * @brief 粒子结构体
      */
     struct Particle {
-        glm::vec3 position;      // 位置
-        glm::vec3 velocity;      // 速度
-        rp3d::RigidBody* rigidBody = nullptr;  // 物理刚体
-        rp3d::Collider* collider = nullptr;    // 碰撞体
-        bool isCore = false;  // ✅ 标记是否为核心粒子
+        glm::vec3 position;           // 当前位置
+        glm::vec3 predictedPosition;  // 预测位置（PBF）
+        glm::vec3 velocity;           // 速度
+        glm::vec3 deltaP;             // 位置修正累积
+        float mass;                   // 质量
+        float density;                // 密度
+        float lambda;                 // 拉格朗日乘数（PBF）
         
-        Particle() : position(0.0f), velocity(0.0f), rigidBody(nullptr), collider(nullptr), isCore(false) {}
+        Particle() : position(0.0f), predictedPosition(0.0f), velocity(0.0f), 
+                     deltaP(0.0f), mass(1.0f), density(0.0f), lambda(0.0f) {}
     };
 
     /**
-     * @brief 构造函数
-     * @param engine 游戏引擎实例
-     * @param center 史莱姆中心位置
-     * @param numParticles 粒子数量
-     * @param particleRadius 每个粒子的半径
-     * @param initialRadius 初始生成半径
-     * @param shader 渲染着色器
-     * @param texture 纹理ID
+     * @brief PBF 参数结构体 - 基于 Macklin & Müller 2013 论文
      */
+    struct PBFParams {
+        float restDensity = 1000.0f;      // 静止密度 (kg/m³)
+        float epsilon = 600.0f;           // CFM松弛参数 (用于数值稳定性)
+        float viscosity = 0.01f;          // 粘度系数 (XSPH)
+        float surfaceTension = 0.0001f;   // 表面张力系数
+        float cohesion = 0.01f;           // 向心力强度（史莱姆特性）
+        float smoothingRadius = 0.3f;     // SPH核半径 (h)
+        int solverIterations = 4;         // PBF求解器迭代次数
+        float vorticityEpsilon = 0.001f;  // 涡量约束强度
+        float boundaryDamping = 0.8f;     // 边界碰撞阻尼
+        float deltaQ = 0.3f;              // 张力修正参数 (通常为 0.1h ~ 0.3h)
+        float tensileK = 0.0001f;         // 张力不稳定性修正强度
+        int tensileN = 4;                 // 张力修正指数
+    };
+
+public:
     Slime(Engine* engine,
           const glm::vec3& center = glm::vec3(0.0f),
-          int numParticles = 20,
-          float particleRadius = 0.15f,
-          float initialRadius = 1.0f,
+          float radius = 1.5f,
+          int particleCount = 500,
           Shader* shader = nullptr,
           GLuint texture = 0);
 
@@ -55,91 +68,146 @@ public:
     void update(float deltaTime) override;
     void render() const override;
     bool collideWith(const Object& other) const override;
-
-    // 参数设置
-    void setCohesionForce(float force) { m_cohesionForce = force; }
-    void setDamping(float damping) { m_damping = damping; }
-	void setMaxCohesionDistance(float distance) { m_maxCohesionDistance = distance; }
-    void setForceRadius(float radius) { m_forceRadius = radius; }  // 设置力的作用半径
-    void setVerticalBias(float bias) { m_verticalBias = bias; }    // ✅ 设置垂直偏好（权重）
-    void setGravityBoost(float boost) { m_gravityBoost = boost; }  // ✅ 设置额外重力强度
-    void setRepulsionForce(float force) { m_repulsionForce = force; }     // 设置粒子间排斥力
-    void setRepulsionRadius(float radius) { m_repulsionRadius = radius; }    // 设置排斥力作用半径
-    void setSurfaceTension(float tension) { m_surfaceTension = tension; }     // 设置表面张力
-    void setViscosity(float viscosity) { m_viscosity = viscosity; }          // 设置流体粘度
-    void setRestDensity(float density) { m_restDensity = density; }          // 设置静止密度
-    
-    // ✅ 施加外力（区域性，只影响中心附近的粒子）
     void applyForce(const glm::vec3& force) override;
+
+    // ===== PBF 相关方法 (基于 Position Based Dynamics) =====
     
-    // 获取粒子信息
-    const std::vector<Particle>& getParticles() const { return m_particles; }
-    int getParticleCount() const { return m_particles.size(); }
+    /**
+     * @brief PBF主循环 - 按照标准算法流程
+     */
+    void updatePBF(float dt);
     
-    // 获取中心粒子索引
-    int getCoreParticleIndex() const { return m_coreParticleIndex; }
+    /**
+     * @brief 1. 应用外力 (重力 + 用户输入)
+     */
+    void applyExternalForces(float dt);
     
-    // ✅ 调试可视化开关
-    void setDebugVisualization(bool enable) { m_debugVisualization = enable; }
-    bool isDebugVisualizationEnabled() const { return m_debugVisualization; }
+    /**
+     * @brief 2. 预测位置 x* = x + Δt·v
+     */
+    void predictPositions(float dt);
     
-    // ✅ 未来：分裂功能接口（预留）
-    // Slime* split(float splitRatio = 0.5f);  // 按比例分裂史莱姆
+    /**
+     * @brief 3. 查找邻居粒子 (空间哈希加速)
+     */
+    void findNeighbors();
+    
+    /**
+     * @brief 4. 求解器循环开始前重置 deltaP
+     */
+    void resetDeltaP();
+    
+    /**
+     * @brief 5. 计算密度和 lambda (约束C和梯度)
+     */
+    void computeDensityAndLambda();
+    
+    /**
+     * @brief 6. 计算位置修正 Δp (PBF核心)
+     */
+    void computePositionCorrection();
+    
+    /**
+     * @brief 7. 应用位置修正
+     */
+    void applyPositionCorrection();
+    
+    /**
+     * @brief 8. 应用向心力 (保持史莱姆整体形状)
+     */
+    void applyCohesionForce();
+    
+    /**
+     * @brief 9. 更新速度 v = (x* - x) / Δt
+     */
+    void updateVelocities(float dt);
+    
+    /**
+     * @brief 10. 应用 XSPH 粘度
+     */
+    void applyXSPHViscosity();
+    
+    /**
+     * @brief 11. 应用涡量约束 (保持流体动态)
+     */
+    void applyVorticityConfinement(float dt);
+    
+    /**
+     * @brief 12. 碰撞检测与响应
+     */
+    void handleCollisions();
+    
+    /**
+     * @brief 与物理世界交互 (通过刚体)
+     */
+    void interactWithPhysicsWorld();
+
+    // ===== 空间哈希加速 =====
+    
+    int hashPosition(const glm::vec3& pos) const;
+    void clearSpatialHash();
+    void insertParticle(int particleIndex);
+
+    // ===== SPH 核函数 (Poly6, Spiky, Viscosity) =====
+    
+    float poly6Kernel(float r) const;
+    float poly6KernelNormalized(float rSquared) const;  // 优化版本
+    glm::vec3 spikyGradient(const glm::vec3& r) const;
+    float viscosityLaplacian(float r) const;
+
+    // ===== 配置与查询 =====
+    
+    void setPBFParams(const PBFParams& params) { m_pbfParams = params; }
+    const PBFParams& getPBFParams() const { return m_pbfParams; }
+    
+    void setParticleRadius(float radius) { m_particleRadius = radius; updateInstancedData(); }
+    float getParticleRadius() const { return m_particleRadius; }
+    
+    glm::vec3 getSlimeCenter() const;  // 计算质心
+    
+    float getParticleMass() const { return m_particleMass; }
 
 private:
-    // 粒子系统
-    std::vector<Particle> m_particles;        // 粒子列表
-    int m_numParticles;                       // 粒子数量
-    float m_particleRadius;                   // 粒子半径
-    glm::vec3 m_center;                       // 史莱姆几何中心（质心）
-    int m_coreParticleIndex;                  // ✅ 中心粒子索引
-    float m_maxCohesionDistance = 0.5f;       // 向心力最大作用距离
-    float m_forceRadius = 1.5f;               // ✅ 外力作用半径（相对于中心粒子）
-    float m_verticalBias = 2.0f;              // ✅ 垂直偏好权重（越大越偏向下方）
-    float m_gravityBoost = 5.0f;              // ✅ 额外重力强度（施加给高于质心的粒子）
-    float m_repulsionForce;     // 粒子间排斥力
-    float m_repulsionRadius;    // 排斥力作用半径
-    float m_surfaceTension;     // 表面张力（粒子密度低时的吸引力）
-    float m_viscosity;          // 流体粘度（速度同步强度）
-    float m_restDensity;        // 静止密度（目标粒子间距）
-    bool m_debugVisualization = false;        // ✅ 调试可视化开关
-
-    // 力参数
-    float m_cohesionForce;      // 向心力强度
-    float m_damping;            // 阻尼系数（减速）
+    // ===== 粒子数据 =====
+    std::vector<Particle> m_particles;
+    std::vector<std::vector<int>> m_neighbors;  // 邻居列表
+    float m_particleMass;  // 单个粒子质量
     
-    // 渲染相关
+    // ===== 空间哈希 =====
+    std::unordered_map<int, std::vector<int>> m_spatialHash;
+    float m_cellSize;  // 哈希网格大小 = smoothingRadius
+    
+    // ===== PBF 参数 =====
+    PBFParams m_pbfParams;
+    
+    // ===== 核函数预计算 =====
+    float m_poly6Constant;
+    float m_spikyGradConstant;
+    float m_viscosityLapConstant;
+    float m_wDeltaQPow;  // W(deltaQ)^n
+    
+    // ===== 渲染相关 =====
     Shader* m_shader;
+    VAO* m_vao;
     GLuint m_texture;
-    VAO* m_particleVAO;                      // 单个球体的 VAO
-    size_t m_indexCount;                     // 索引数量
+    float m_particleRadius;
     
-    // 缓冲区（保持存活）
+    // 实例化渲染缓冲
     std::shared_ptr<Buffer<float>> m_vbo;
     std::shared_ptr<Buffer<unsigned int>> m_ebo;
+    std::shared_ptr<Buffer<float>> m_instanceVBO;
+    size_t m_indexCount;
     
-    // 物理形状（共享）
-    rp3d::CollisionShape* m_sphereShape;
-
-    // 初始化方法
-    void initParticles(float initialRadius);
+    // ===== 物理交互 =====
+    glm::vec3 m_slimeCenter;  // 史莱姆质心
+    glm::vec3 m_externalForce;  // 累积的外力 (来自物理引擎或玩家输入)
+    float m_boundaryRadius;   // 边界半径
+    
+    // ===== 辅助方法 =====
+    void initParticles(const glm::vec3& center, float radius, int count);
     void initMesh();
-    void cleanupPhysics();
-    
-    // 更新方法
-    void updateCenter();                      // 更新几何中心（质心）
-    void updateCoreParticle();                // ✅ 更新中心粒子
-    void applyForces(float deltaTime);        // 应用向心力
-    void syncParticlesFromPhysics();          // 从物理引擎同步粒子位置
-    
-    // ✅ 计算粒子距离中心粒子的距离
-    float getDistanceFromCore(int particleIndex) const;
-
-    // ✅ 新增力学计算方法
-    void applyRepulsionForces(float deltaTime);     // 应用排斥力
-    void applySurfaceTension(float deltaTime);      // 应用表面张力
-    void applyViscosity(float deltaTime);           // 应用粘度
-    float calculateLocalDensity(int particleIndex); // 计算局部密度
+    void updateInstancedData();
+    void precomputeKernelConstants();  // 预计算核函数系数
 };
 
 #endif // SLIME_H

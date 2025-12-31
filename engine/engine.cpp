@@ -196,6 +196,12 @@ void Engine::setupDemoData()
     sphereShader->begin();
     sphereShader->setInt("texture1", 0);  // 纹理单元 0
     sphereShader->end();
+    
+    // 配置 slime shader
+    auto* slimeShader = shaderManager->getShader("slime");
+    slimeShader->begin();
+    slimeShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));  // 更亮的绿色史莱姆
+    slimeShader->end();
 
     // 设置相机
     camera->setFOV(60.0f);
@@ -238,32 +244,41 @@ void Engine::setupDemoData()
     }
 
     // 创建 Sphere 对象
-    Sphere* sphere = new Sphere(this, glm::vec3(3.0f, 0.0f, 0.0f), 1.0f, sphereShader, texture2);
-    sphere->initPhysics(Object::PhysicsType::DYNAMIC, Object::CollisionShape::SPHERE, glm::vec3(1.0f), 1.0f);
-    scene->addObject(sphere);
+    Sphere* mySphere = new Sphere(this, glm::vec3(3.0f, 0.0f, 0.0f), 1.0f, sphereShader, texture2);
+    mySphere->initPhysics(Object::PhysicsType::DYNAMIC, Object::CollisionShape::SPHERE, glm::vec3(1.0f), 1.0f);
+    scene->addObject(mySphere);
 
-	// 创建 slime 对象
-	// 优化参数：减少粒子数量，增大粒子半径，提高流动性
-	Slime* slime = new Slime(this, glm::vec3(-2.0f, -3.0f, 0.0f), 200, 0.1f, 2.2f, sphereShader, texture2);
+    // ✅ 创建史莱姆对象 - 使用改进的参数
+    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, -2.0f, 0.0f), 1.0f, 200, slimeShader, 0);
     
-    // 优化力学参数
-    slime->setCohesionForce(1.25f);           // 降低向心力
-    slime->setDamping(0.98f);                // 降低阻尼
-    slime->setMaxCohesionDistance(3.0f);     // 增大向心力作用距离
-    slime->setForceRadius(1.5f);             // 力作用半径
-    slime->setVerticalBias(1.5f);            // 降低垂直偏好
+    // ✅ 设置合理的粒子半径（根据核半径调整）
+    mySlime->setParticleRadius(0.08f);  // 小一点，更符合流体感
     
-    slime->setRepulsionForce(30.0f);         // 排斥力强度
-    slime->setRepulsionRadius(0.22f);        // 排斥力半径
-    slime->setSurfaceTension(3.0f);          // 表面张力
-    slime->setViscosity(0.3f);               // 流体粘度
-    slime->setRestDensity(0.2f);             // 静止密度
+    // ✅ 调整 PBF 参数以获得更好的稳定性
+    Slime::PBFParams params = mySlime->getPBFParams();
+    params.smoothingRadius = 0.1f;     // 核半径
+    params.restDensity = 6378.0f;      // 密度（根据粒子间距调整）
+    params.cohesion = 0.01f;           // 向心力（保持形状）
+    params.viscosity = 0.02f;          // 粘度（增加平滑度）
+    params.solverIterations = 4;       // 求解器迭代次数
+    params.boundaryDamping = 0.8f;     // 边界阻尼
+    mySlime->setPBFParams(params);
     
-    scene->addObject(slime);
+    // 绑定史莱姆到玩家控制器
+    playerController->setControlledObject(mySlime);
+    playerController->setMoveSpeed(10.0f);  // 增大移动速度
     
-    // ✅ 绑定史莱姆到玩家控制器
-    playerController->setControlledObject(slime);
-    playerController->setMoveSpeed(8.0f);    // 提高移动力度（从5改为8）
+    // 添加到场景
+    scene->addObject(mySlime);
+    
+    std::cout << "✅ 场景设置完成！" << std::endl;
+    std::cout << "   史莱姆位置: (-3, -2, 0)" << std::endl;
+    std::cout << "   粒子数量: 200" << std::endl;
+    std::cout << "   粒子半径: 0.08 m" << std::endl;
+    std::cout << "   核半径: 0.1 m" << std::endl;
+    std::cout << "   相机初始位置: (-2, -3, 3)" << std::endl;
+    std::cout << "   按 'C' 切换控制模式，按 'Alt' 切换鼠标捕获" << std::endl;
+    std::cout << "   按 'WASD' 移动史莱姆，按 'Space' 向上移动" << std::endl;
 }
 
 void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
@@ -283,6 +298,15 @@ void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
     sphereShader->setMat4("uView", viewMatrix);
     sphereShader->setMat4("uProjection", projectionMatrix);
     sphereShader->end();
+    
+    // 更新 slime shader
+    auto* slimeShader = shaderManager->getShader("slime");
+    slimeShader->begin();
+    slimeShader->setMat4("uView", viewMatrix);
+    slimeShader->setMat4("uProjection", projectionMatrix);
+    slimeShader->set("uCameraPos", camera->getPosition());
+    slimeShader->setFloat("uTime", static_cast<float>(glfwGetTime()));
+    slimeShader->end();
 }
 
 void Engine::render()
@@ -356,6 +380,7 @@ int Engine::init() {
     camera->enableFPS(true);
     shaderManager->loadShader("basic", "assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
     shaderManager->loadShader("sphere", "assets/shaders/sphere_vertex.glsl", "assets/shaders/sphere_fragment.glsl");
+    shaderManager->loadShader("slime", "assets/shaders/slime_vertex.glsl", "assets/shaders/slime_fragment.glsl");
 
 	myApp->setKeyboardCallback(keyCallback);
 

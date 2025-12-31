@@ -186,17 +186,18 @@ public:
     /**
      * @brief 添加VBO并配置属性。
      * @param vbo VBO模板对象。
-     * @param layout 属性布局，如"3f 2i"（size + type）。
+     * @param layout 属性布局，如"3f 3f 2f"（size + type）。
      * @param normalized 是否规范化，默认GL_FALSE。
+     * @param startIndex 起始属性索引，默认0。
      */
     template<typename T>
-    void addVBO(const VBO<T>& vbo, const std::string& layout, GLboolean normalized = GL_FALSE) {
+    void addVBO(const VBO<T>& vbo, const std::string& layout, GLboolean normalized = GL_FALSE, GLuint startIndex = 0) {
         bind();
         vbo.bind();
 
         std::istringstream iss(layout);
         std::string token;
-        GLuint index = 0;
+        GLuint index = startIndex;
         GLsizei stride = 0;
 
         // 计算stride
@@ -220,6 +221,48 @@ public:
         }
 
         m_vertexCount = vbo.size() / stride;
+        vbo.unbind();
+        unbind();
+    }
+    
+    /**
+     * @brief 添加实例化VBO并配置属性（设置 divisor = 1）
+     * @param vbo 实例化VBO对象。
+     * @param layout 属性布局，如"4f 4f 4f 4f"（用于mat4）。
+     * @param startIndex 起始属性索引。
+     * @param divisor 实例化分频器，默认1（每个实例更新一次）。
+     */
+    template<typename T>
+    void addInstancedVBO(const VBO<T>& vbo, const std::string& layout, GLuint startIndex, GLuint divisor = 1) {
+        bind();
+        vbo.bind();
+
+        std::istringstream iss(layout);
+        std::string token;
+        GLuint index = startIndex;
+        GLsizei stride = 0;
+
+        // 计算stride
+        std::istringstream iss2(layout);
+        while (iss2 >> token) {
+            int size = std::stoi(token.substr(0, token.size() - 1));
+            char typeChar = token.back();
+            GLenum attrType = parseType(typeChar);
+            stride += size * getTypeSize(attrType);
+        }
+
+        const void* offset = (void*)0;
+        while (iss >> token) {
+            int size = std::stoi(token.substr(0, token.size() - 1));
+            char typeChar = token.back();
+            GLenum attrType = parseType(typeChar);
+            glVertexAttribPointer(index, size, attrType, GL_FALSE, stride, offset);
+            glEnableVertexAttribArray(index);
+            glVertexAttribDivisor(index, divisor);  // 设置实例化分频器
+            offset = reinterpret_cast<const void*>(reinterpret_cast<size_t>(offset) + size * getTypeSize(attrType));
+            index++;
+        }
+
         vbo.unbind();
         unbind();
     }
@@ -251,6 +294,24 @@ public:
         }
         else {
             glDrawArrays(mode, offset, count ? count : m_vertexCount);
+        }
+        unbind();
+    }
+
+    /**
+     * @brief 实例化绘制几何
+     * @param instanceCount 实例数量
+     * @param indexCount 索引数量（使用EBO时）
+     * @param mode 模式，默认GL_TRIANGLES
+     */
+    void drawInstanced(GLsizei instanceCount, GLsizei indexCount = 0, GLenum mode = GL_TRIANGLES) const {
+        bind();
+        if (m_hasEBO) {
+            GLsizei count = indexCount > 0 ? indexCount : m_eboCount;
+            glDrawElementsInstanced(mode, count, m_eboType, nullptr, instanceCount);
+        }
+        else {
+            glDrawArraysInstanced(mode, 0, m_vertexCount, instanceCount);
         }
         unbind();
     }
