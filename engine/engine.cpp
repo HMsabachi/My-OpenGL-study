@@ -254,9 +254,9 @@ void Engine::setupDemoData()
     Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 1.5f, 500, slimeShader, 0);
     
     // 调整史莱姆参数以获得更好的流体效果
-    mySlime->setRestDensity(70.0f);        // 更低的密度
+    mySlime->setRestDensity(50.0f);        // 合理的密度
     mySlime->setParticleRadius(0.12f);      // 增大粒子
-    mySlime->setCohesionStrength(20000.5f);     // 更低的向心力
+    mySlime->setCohesionStrength(5500.0f);     // 中等向心力
     
     // 绑定到玩家控制器
     playerController->setControlledObject(mySlime);

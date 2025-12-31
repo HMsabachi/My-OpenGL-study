@@ -19,7 +19,7 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
       m_particleRadius(0.12f),        // 增大粒子半径
       m_restDensity(1000.0f),         // 大幅降低静止密度（原来6378）
       m_epsilon(100.0f),              // 降低松弛参数（原来600）
-      m_solverIterations(2),          // 减少迭代次数
+      m_solverIterations(3),          // 减少迭代次数
       m_cohesionStrength(3.0f),       // 大幅降低向心力（原来15.0）
       m_viscosity(0.05f),             // 增加粘性
       m_shader(shader),
@@ -100,6 +100,7 @@ void Slime::update(float deltaTime) {
     
     // PBF模拟步骤
     applyExternalForces(deltaTime);
+    applyCohesionForce();  // 在这里施加向心力（作为外力）
     predictPositions(deltaTime);
     
     // 构建空间哈希和更新邻居
@@ -112,18 +113,29 @@ void Slime::update(float deltaTime) {
     }
     
     updateVelocities(deltaTime);
-    applyCohesionForce();
     applyViscosity();
     
     // 处理碰撞
     handleCollisions();
     handleObjectCollisions();
     
+    // 安全检查：确保粒子不会离质心太远
+    glm::vec3 center = getCenterOfMass();
+    const float maxDistance = m_slimeRadius * 3.0f;
+    for (auto& particle : m_particles) {
+        float dist = glm::length(particle.position - center);
+        if (dist > maxDistance) {
+            // 强制拉回
+            particle.position = center + glm::normalize(particle.position - center) * maxDistance;
+            particle.velocity *= 0.5f;
+        }
+    }
+    
     // 更新渲染数据
     updateInstanceBuffer();
     
     // 更新质心位置
-    m_position = getCenterOfMass();
+    m_position = center;
 }
 
 void Slime::applyExternalForces(float dt) {
@@ -289,34 +301,77 @@ void Slime::solveConstraints() {
 }
 
 void Slime::updateVelocities(float dt) {
+    const float maxVelocity = 50.0f;  // 限制最大速度
+    
     for (auto& particle : m_particles) {
         particle.velocity = (particle.predictedPos - particle.position) / dt;
+        
+        // 限制速度，防止粒子飞出
+        float speed = glm::length(particle.velocity);
+        if (speed > maxVelocity) {
+            particle.velocity = (particle.velocity / speed) * maxVelocity;
+        }
+        
         particle.position = particle.predictedPos;
     }
 }
 
 void Slime::applyCohesionForce() {
-    // 向心力：将粒子拉向质心
+    // 向心力：形成史莱姆的水滴形状（底部扁平宽，顶部圆润）
     glm::vec3 centerOfMass = getCenterOfMass();
     
     for (size_t i = 0; i < m_particles.size(); ++i) {
         auto& particle = m_particles[i];
-        glm::vec3 toCenter = centerOfMass - particle.position;
-        float dist = glm::length(toCenter);
         
-        // 只在距离较远时施加向心力，让粒子更自由流动
-        if (dist > m_slimeRadius * 0.8f) {
-            float strength = m_cohesionStrength * (dist - m_slimeRadius * 0.8f) / m_slimeRadius;
-            particle.force += glm::normalize(toCenter) * strength;
+        // 计算粒子相对质心的位置
+        glm::vec3 relativePos = particle.position - centerOfMass;
+        float horizontalDist = std::sqrt(relativePos.x * relativePos.x + relativePos.z * relativePos.z);
+        float verticalPos = relativePos.y;
+        
+        // 定义史莱姆的理想形状（水滴形）
+        // 计算此高度下的理想水平半径
+        float heightRatio = (verticalPos + m_slimeRadius * 0.5f) / (m_slimeRadius * 1.5f);
+        heightRatio = glm::clamp(heightRatio, 0.0f, 1.0f);
+        
+        // 水滴形状：底部宽，顶部窄
+        float idealRadius;
+        if (heightRatio < 0.5f) {
+            // 底部保持宽度
+            idealRadius = m_slimeRadius * 1.2f;
+        } else {
+            // 顶部收窄
+            float t = (heightRatio - 0.5f) / 0.5f;
+            idealRadius = m_slimeRadius * (1.2f - 0.8f * t * t);
         }
         
-        // 添加表面张力 - 让靠近的粒子互相吸引
+        // 1. 水平向心力：约束水平半径
+        if (horizontalDist > idealRadius * 0.1f) {  // 避免除以0
+            float excess = horizontalDist - idealRadius;
+            if (excess > 0) {
+                glm::vec3 horizontalDir = glm::normalize(glm::vec3(relativePos.x, 0, relativePos.z));
+                float strength = m_cohesionStrength * excess;
+                particle.force -= horizontalDir * strength;
+            }
+        }
+        
+        // 2. 垂直力：维持高度
+        // 底部支撑
+        if (verticalPos < -m_slimeRadius * 0.4f) {
+            float depth = -m_slimeRadius * 0.4f - verticalPos;
+            particle.force.y += m_cohesionStrength * depth * 3.0f;
+        }
+        // 顶部压制（防止过高）
+        else if (verticalPos > m_slimeRadius * 0.6f) {
+            float excess = verticalPos - m_slimeRadius * 0.6f;
+            particle.force.y -= m_cohesionStrength * excess * 2.0f;
+        }
+        
+        // 3. 表面张力
         for (int neighborIdx : m_neighbors[i]) {
             glm::vec3 toNeighbor = m_particles[neighborIdx].position - particle.position;
             float neighborDist = glm::length(toNeighbor);
             
             if (neighborDist > m_particleRadius * 2.0f && neighborDist < m_particleRadius * 3.5f) {
-                // 在中等距离施加弱吸引力
                 float attractionStrength = 0.5f;
                 particle.force += glm::normalize(toNeighbor) * attractionStrength;
             }
