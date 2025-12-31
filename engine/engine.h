@@ -83,6 +83,9 @@ public:
 public:
 	static void framebufferSizeCallback(int width, int height);
 	static void keyCallback(int key, int action, int mods);
+    
+    // 获取物理世界
+    rp3d::PhysicsWorld* getPhysicsWorld() { return pWorld; }
 };
 
 #endif // ENGINE_H

@@ -57,7 +57,7 @@ void Engine::update()
         setAcceleration(this->cameraData.acceleration);
         this->updateCamera(deltaTime);
     } else {
-        // 物体控制模式 - 摄像机可以旋转但不移动
+        // 物体控制模式 - 摄像头可以旋转但不移动
         auto mOffset = myApp->getMouseMoveDistance();
         
         // ✅ 修复：限制鼠标移动距离，防止异常值
@@ -187,20 +187,20 @@ void Engine::setupDemoData()
     // 配置 basic shader
     auto* basicShader = shaderManager->getShader("basic");
     basicShader->begin();
-    basicShader->setInt("texture1", 0);  // 纹理单元 0
-    basicShader->setInt("texture2", 1);  // 纹理单元 1
+    basicShader->setInt("texture1", 0);
+    basicShader->setInt("texture2", 1);
     basicShader->end();
     
     // 配置 sphere shader
     auto* sphereShader = shaderManager->getShader("sphere");
     sphereShader->begin();
-    sphereShader->setInt("texture1", 0);  // 纹理单元 0
+    sphereShader->setInt("texture1", 0);
     sphereShader->end();
     
     // 配置 slime shader
     auto* slimeShader = shaderManager->getShader("slime");
     slimeShader->begin();
-    slimeShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));  // 更亮的绿色史莱姆
+    slimeShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
     slimeShader->end();
 
     // 设置相机
@@ -248,37 +248,33 @@ void Engine::setupDemoData()
     mySphere->initPhysics(Object::PhysicsType::DYNAMIC, Object::CollisionShape::SPHERE, glm::vec3(1.0f), 1.0f);
     scene->addObject(mySphere);
 
-    // ✅ 创建史莱姆对象 - 使用改进的参数
-    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, -2.0f, 0.0f), 1.0f, 200, slimeShader, 0);
     
-    // ✅ 设置合理的粒子半径（根据核半径调整）
-    mySlime->setParticleRadius(0.08f);  // 小一点，更符合流体感
+    // 创建史莱姆（位置、半径、粒子数）
+    // 让史莱姆从空中掉落，更好地展示流体效果
+    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 1.5f, 500, slimeShader, 0);
     
-    // ✅ 调整 PBF 参数以获得更好的稳定性
-    Slime::PBFParams params = mySlime->getPBFParams();
-    params.smoothingRadius = 0.1f;     // 核半径
-    params.restDensity = 6378.0f;      // 密度（根据粒子间距调整）
-    params.cohesion = 0.01f;           // 向心力（保持形状）
-    params.viscosity = 0.02f;          // 粘度（增加平滑度）
-    params.solverIterations = 4;       // 求解器迭代次数
-    params.boundaryDamping = 0.8f;     // 边界阻尼
-    mySlime->setPBFParams(params);
+    // 调整史莱姆参数以获得更好的流体效果
+    mySlime->setRestDensity(70.0f);        // 更低的密度
+    mySlime->setParticleRadius(0.12f);      // 增大粒子
+    mySlime->setCohesionStrength(20000.5f);     // 更低的向心力
     
-    // 绑定史莱姆到玩家控制器
+    // 绑定到玩家控制器
     playerController->setControlledObject(mySlime);
-    playerController->setMoveSpeed(10.0f);  // 增大移动速度
+    playerController->setMoveSpeed(15.0f);
     
     // 添加到场景
     scene->addObject(mySlime);
     
-    std::cout << "✅ 场景设置完成！" << std::endl;
-    std::cout << "   史莱姆位置: (-3, -2, 0)" << std::endl;
-    std::cout << "   粒子数量: 200" << std::endl;
-    std::cout << "   粒子半径: 0.08 m" << std::endl;
-    std::cout << "   核半径: 0.1 m" << std::endl;
-    std::cout << "   相机初始位置: (-2, -3, 3)" << std::endl;
-    std::cout << "   按 'C' 切换控制模式，按 'Alt' 切换鼠标捕获" << std::endl;
-    std::cout << "   按 'WASD' 移动史莱姆，按 'Space' 向上移动" << std::endl;
+    std::cout << "\n========== 场景设置完成 ==========" << std::endl;
+    std::cout << "史莱姆位置: (-3, 3, 0) - 将从空中掉落" << std::endl;
+    std::cout << "控制说明:" << std::endl;
+    std::cout << "   - 按 'Alt' 切换鼠标捕获" << std::endl;
+    std::cout << "   - 按 'C' 切换控制模式（摄像机/物体）" << std::endl;
+    std::cout << "   - WASD: 水平移动" << std::endl;
+    std::cout << "   - Space: 向上" << std::endl;
+    std::cout << "   - Shift: 向下" << std::endl;
+    std::cout << "提示: 试试让史莱姆跳跃或快速移动来看流体效果！" << std::endl;
+    std::cout << "==================================\n" << std::endl;
 }
 
 void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
