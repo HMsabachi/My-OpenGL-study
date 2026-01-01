@@ -1,6 +1,8 @@
 ﻿#include "playerController.h"
 #include "engine.h"
 #include "camera.h"
+#include "object/slime/slime.h"
+#include "object/slime/slimeController.h"
 #include "../application/application.h"
 #include <iostream>
 
@@ -10,11 +12,43 @@ PlayerController::PlayerController(Engine* engine, Camera* camera)
       m_controlledObject(nullptr),
       m_controlMode(ControlMode::CAMERA),
       m_moveSpeed(5.0f),
-      m_moveForce(5.0f)  // 使用 m_moveSpeed 初始化
+      m_moveForce(5.0f),
+      m_slimeController(nullptr)
 {
 }
 
+PlayerController::~PlayerController() {
+    // 清理 SlimeController
+    if (m_slimeController) {
+        delete m_slimeController;
+        m_slimeController = nullptr;
+    }
+}
+
+void PlayerController::setControlledObject(Object* object) {
+    m_controlledObject = object;
+
+    // 如果控制的是史莱姆，创建 SlimeController
+    if (m_slimeController) {
+        delete m_slimeController;
+        m_slimeController = nullptr;
+    }
+
+    Slime* slime = dynamic_cast<Slime*>(object);
+    if (slime) {
+        m_slimeController = new SlimeController(slime);
+        m_slimeController->setCohesionRange(2.0f);  // 设置凝聚范围
+        m_slimeController->setMinClusterSize(10);   // 最小集群大小
+        std::cout << "[PlayerController] 创建 SlimeController" << std::endl;
+    }
+}
+
 void PlayerController::update(float deltaTime) {
+    // 首先更新 SlimeController（如果有）
+    if (m_slimeController) {
+        m_slimeController->update(deltaTime);
+    }
+
     if (m_controlMode == ControlMode::CAMERA) {
         updateCameraControl(deltaTime);
     } else if (m_controlMode == ControlMode::OBJECT) {
@@ -87,13 +121,14 @@ void PlayerController::updateObjectControl(float deltaTime) {
     if (glm::length(moveDirection) > 0.001f) {
         moveDirection = glm::normalize(moveDirection);
 
-        // 修复：同时使用速度和力，确保有响应
-        // 对于史莱姆这种粒子系统，需要施加持续的力
-        glm::vec3 force = moveDirection * m_moveForce;
-        m_controlledObject->applyForce(force);
-        
-        // 可选：直接修改速度，让控制更响应
-        // 对于传统刚体，这样做会绕过物理模拟，但对粒子系统很有效
-        // m_controlledObject->setVelocity(moveDirection * m_moveSpeed);
+        // 如果是史莱姆，使用 SlimeController 施加力到主集群
+        if (m_slimeController) {
+            glm::vec3 force = moveDirection * m_moveForce;
+            m_slimeController->applyForceToMainCluster(force);
+        } else {
+            // 普通对象，施加全局力
+            glm::vec3 force = moveDirection * m_moveForce;
+            m_controlledObject->applyForce(force);
+        }
     }
 }

@@ -6,9 +6,12 @@
 
 class Camera;
 class Engine;
+class SlimeController;  // ✅ 前向声明
+class Slime;            // ✅ 前向声明
 
 /**
  * @brief 玩家控制器 - 支持切换控制摄像机或物体
+ * ✅ 集成 SlimeController，自动管理史莱姆的凝聚行为
  */
 class PlayerController {
 public:
@@ -18,7 +21,7 @@ public:
     };
 
     PlayerController(Engine* engine, Camera* camera);
-    ~PlayerController() = default;
+    ~PlayerController();  // ✅ 需要释放 SlimeController
 
     // 更新
     void update(float deltaTime);
@@ -29,13 +32,16 @@ public:
     ControlMode getControlMode() const { return m_controlMode; }
 
     // 控制对象
-    void setControlledObject(Object* object) { m_controlledObject = object; }
+    void setControlledObject(Object* object);
     Object* getControlledObject() const { return m_controlledObject; }
 
     // 移动参数
     void setMoveSpeed(float speed) { m_moveSpeed = speed; }
 	void setMoveForce(float force) { m_moveForce = force; }
     float getMoveSpeed() const { return m_moveSpeed; }
+
+    // ✅ SlimeController 访问接口
+    SlimeController* getSlimeController() const { return m_slimeController; }
 
 private:
     Engine* m_engine;
@@ -46,6 +52,9 @@ private:
     // 移动参数
     float m_moveSpeed;            // 移动速度
     float m_moveForce;            // 施加的力（用于物理物体）
+
+    // ✅ 史莱姆控制器（如果控制的是史莱姆）
+    SlimeController* m_slimeController;
 
     // 内部更新方法
     void updateCameraControl(float deltaTime);

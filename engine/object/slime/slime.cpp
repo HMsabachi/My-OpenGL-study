@@ -1,6 +1,6 @@
 ﻿// slime.cpp
 #include "slime.h"
-#include "../engine.h"
+#include "../../engine.h"
 #include "../../wrapper/widgets.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -123,7 +123,7 @@ void Slime::update(float deltaTime) {
     }
     
     updateVelocities(deltaTime);
-    applyCohesionForce();
+    
     applyViscosity();
     
     // ✅ 使用物理查询进行碰撞检测
@@ -132,7 +132,7 @@ void Slime::update(float deltaTime) {
     // 更新渲染数据
     updateInstanceBuffer();
     
-    // 更新质心位置
+    // ✅ 更新质心位置（用于相机跟踪，但不作为向心力中心）
     m_position = getCenterOfMass();
 }
 
@@ -505,12 +505,8 @@ void Slime::updateInstanceBuffer() {
             memcpy(&instanceData[i * 16], glm::value_ptr(matrix), 16 * sizeof(float));
         });
     
-    // 更新GPU缓冲
-    m_instanceVBO->bind();
-    glBufferSubData(GL_ARRAY_BUFFER, 0, 
-                    instanceData.size() * sizeof(float), 
-                    instanceData.data());
-    m_instanceVBO->unbind();
+    // ✅ 使用封装的 update 方法更新GPU缓冲
+    m_instanceVBO->update(instanceData, 0);
 }
 
 void Slime::render() const {

@@ -2,7 +2,7 @@
 #ifndef SLIME_H
 #define SLIME_H
 
-#include "object.h"
+#include "../object.h"
 #include "../../glFrameWork/shader.h"
 #include "../../glFrameWork/buffers.h"
 #include <glm/glm.hpp>
@@ -54,6 +54,12 @@ public:
     void setParticleRadius(float radius) { m_particleRadius = radius; }
     void setCohesionStrength(float strength) { m_cohesionStrength = strength; }
     float getCohesionStrength() const { return m_cohesionStrength; }
+    
+    // ✅ 新增：访问粒子数据的接口（供 SlimeController 使用）
+    const std::vector<Particle>& getParticles() const { return m_particles; }
+    Particle& getParticleMutable(int index) { return m_particles[index]; }
+    const std::vector<std::vector<int>>& getNeighbors() const { return m_neighbors; }
+    float getSlimeRadius() const { return m_slimeRadius; }
     
 private:
     // PBF算法步骤（全部并行优化）
