@@ -8,17 +8,17 @@
 #include <random>
 #include <iostream>
 #include <cmath>
-#include <execution>  // ✅ C++17 并行算法
-#include <numeric>    // ✅ std::iota
-#include <thread>     // ✅ 线程支持
-#include <mutex>      // ✅ 互斥锁
-#include <atomic>     // ✅ 原子操作
+#include <execution>  //  C++17 并行算法
+#include <numeric>    //  std::iota
+#include <thread>     //  线程支持
+#include <mutex>      //  互斥锁
+#include <atomic>     //  原子操作
 
 // 常量
 const float PI = 3.14159265359f;
 
 Slime::Slime(Engine* engine, const glm::vec3& position, float radius, 
-             int particleCount, Shader* shader, GLuint texture)
+             int particleCount, Shader* particleShader, Shader* meshShader, GLuint texture)
     : Object(engine, position),
       m_slimeRadius(radius),
       m_particleRadius(0.12f),
@@ -27,15 +27,25 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
       m_solverIterations(3),
       m_cohesionStrength(3.0f),
       m_viscosity(0.05f),
-      m_shader(shader),
+      m_particleShader(particleShader),
+      m_meshShader(meshShader),
       m_texture(texture),
-      m_sphereIndexCount(0)
+      m_sphereIndexCount(0),
+      m_renderMode(RenderMode::PARTICLES),
+      m_meshResolution(32),
+      m_isoLevel(0.5f),
+      m_blurIterations(2),
+      m_meshUpdateTimer(0.0f),
+      m_meshUpdateInterval(0.05f),  // 每秒更新20次网格
+      m_meshIndexCount(0),
+      m_particleVAO(nullptr),
+      m_meshVAO(nullptr)
 {
     // 初始化粒子
     m_particles.resize(particleCount);
     m_neighbors.resize(particleCount);
     
-    // ✅ 创建粒子索引数组（用于并行遍历）
+    //  创建粒子索引数组（用于并行遍历）
     m_particleIndices.resize(particleCount);
     std::iota(m_particleIndices.begin(), m_particleIndices.end(), 0);
     
@@ -67,16 +77,27 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
     // 初始化渲染数据
     initRenderData();
     
-    // ✅ 更新日志输出
+    // ✅ 初始化密度场和 Marching Cubes
+    glm::vec3 boundsMin = position - glm::vec3(radius * 1.5f);
+    glm::vec3 boundsMax = position + glm::vec3(radius * 1.5f);
+    m_densityField = new DensityField(boundsMin, boundsMax, m_meshResolution);
+    m_marchingCubes = new MarchingCubes();
+    
+    //  更新日志输出
     std::cout << "[Slime] 史莱姆创建成功：" << particleCount << " 个粒子 | 并行计算：启用" 
-              << " | CPU 核心数：" << std::thread::hardware_concurrency() << std::endl;
+              << " | CPU 核心数：" << std::thread::hardware_concurrency() 
+              << " | 网格分辨率：" << m_meshResolution << std::endl;
 }
 
 Slime::~Slime() {
-    delete m_vao;
+    delete m_particleVAO;
+    delete m_meshVAO;
+    delete m_densityField;
+    delete m_marchingCubes;
 }
 
 void Slime::initRenderData() {
+    // ===== 粒子渲染数据 =====
     // 创建一个小球体网格作为粒子的基础模型
     widgets::SphereData sphereData = widgets::createSphere(m_particleRadius, 8, 6);
     
@@ -88,20 +109,40 @@ void Slime::initRenderData() {
     std::vector<float> instanceData(m_particles.size() * 16);  // mat4 = 16个float
     for (size_t i = 0; i < m_particles.size(); ++i) {
         glm::mat4 matrix = glm::translate(glm::mat4(1.0f), m_particles[i].position);
-        // 将矩阵数据复制到float数组
         memcpy(&instanceData[i * 16], glm::value_ptr(matrix), 16 * sizeof(float));
     }
     
     m_instanceVBO = std::make_shared<Buffer<float>>(instanceData, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
     
-    // 配置VAO
-    m_vao = new VAO();
-    m_vao->addVBO(*m_sphereVBO, "3f 3f 2f", GL_FALSE, 0);  // 顶点数据: pos, normal, texCoord
+    // 配置粒子VAO
+    m_particleVAO = new VAO();
+    m_particleVAO->addVBO(*m_sphereVBO, "3f 3f 2f", GL_FALSE, 0);  // 顶点数据: pos, normal, texCoord
+    m_particleVAO->addInstancedVBO(*m_instanceVBO, "4f 4f 4f 4f", 3, 1);  // 从location 3开始
+    m_particleVAO->addEBO(*m_sphereEBO);
     
-    // 添加实例化数据（mat4需要占用4个属性位置）
-    m_vao->addInstancedVBO(*m_instanceVBO, "4f 4f 4f 4f", 3, 1);  // 从location 3开始
+    // ===== 网格渲染数据 =====
+    // ✅ 预分配合理大小的缓冲区，避免后续重新分配失败
+    // 估算初始容量：假设最多生成 10000 个顶点和 30000 个索引
+    const size_t initialVertexCapacity = 10000;
+    const size_t initialIndexCapacity = 30000;
     
-    m_vao->addEBO(*m_sphereEBO);
+    std::vector<float> emptyMeshData(initialVertexCapacity * 6, 0.0f);  // 6 floats per vertex (pos + normal)
+    std::vector<unsigned int> emptyIndices(initialIndexCapacity, 0);
+    
+    m_meshVBO = std::make_shared<Buffer<float>>(emptyMeshData, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
+    m_meshEBO = std::make_shared<Buffer<unsigned int>>(emptyIndices, GL_ELEMENT_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
+    
+    // ✅ 配置网格VAO（完全使用封装的方法）
+    m_meshVAO = new VAO();
+    m_meshVAO->addVBO(*m_meshVBO, "3f 3f", GL_FALSE, 0);  // location 0: pos(3f), location 1: normal(3f)
+    m_meshVAO->addEBO(*m_meshEBO);
+    
+    // 初始化网格索引计数为0
+    m_meshIndexCount = 0;
+    
+    std::cout << "[Slime] 渲染数据初始化完成 | 网格缓冲预分配：" 
+              << initialVertexCapacity << " 顶点, " 
+              << initialIndexCapacity << " 索引" << std::endl;
 }
 
 void Slime::update(float deltaTime) {
@@ -109,7 +150,7 @@ void Slime::update(float deltaTime) {
     const float maxDt = 0.016f;  // 约60fps
     deltaTime = std::min(deltaTime, maxDt);
     
-    // ✅ PBF模拟步骤（纯并行优化）
+    //  PBF模拟步骤（纯并行优化）
     applyExternalForces(deltaTime);
     predictPositions(deltaTime);
     
@@ -126,30 +167,46 @@ void Slime::update(float deltaTime) {
     
     applyViscosity();
     
-    // ✅ 使用物理查询进行碰撞检测
+    //  使用物理查询进行碰撞检测
     handlePhysicsCollisions();
     
     // 更新渲染数据
-    updateInstanceBuffer();
+    if (m_renderMode == RenderMode::PARTICLES) {
+        updateInstanceBuffer();
+    } else {
+        // 网格模式：定期更新网格
+        m_meshUpdateTimer += deltaTime;
+        if (m_meshUpdateTimer >= m_meshUpdateInterval) {
+            generateMesh();
+            updateMeshBuffers();
+            m_meshUpdateTimer = 0.0f;
+        }
+    }
     
-    // ✅ 更新质心位置（用于相机跟踪，但不作为向心力中心）
+    //  更新质心位置（用于相机跟踪，但不作为向心力中心）
     m_position = getCenterOfMass();
+    
+    // 动态更新密度场边界（跟随史莱姆移动）
+    glm::vec3 boundsMin = m_position - glm::vec3(m_slimeRadius * 1.5f);
+    glm::vec3 boundsMax = m_position + glm::vec3(m_slimeRadius * 1.5f);
+    delete m_densityField;
+    m_densityField = new DensityField(boundsMin, boundsMax, m_meshResolution);
 }
 
-// ✅ 并行优化：施加外力（删除串行代码）
+//  并行优化：施加外力（删除串行代码）
 void Slime::applyExternalForces(float dt) {
     const glm::vec3 gravity(0.0f, -9.81f, 0.0f);
     
-    // ✅ 纯并行处理
+    //  纯并行处理
     std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
         [gravity](Particle& particle) {
             particle.force += gravity;
         });
 }
 
-// ✅ 并行优化：预测位置（删除串行代码）
+//  并行优化：预测位置（删除串行代码）
 void Slime::predictPositions(float dt) {
-    // ✅ 使用 par_unseq 进一步优化，允许向量化
+    //  使用 par_unseq 进一步优化，允许向量化
     std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
         [dt](Particle& particle) {
             particle.velocity += particle.force * dt;
@@ -158,11 +215,11 @@ void Slime::predictPositions(float dt) {
         });
 }
 
-// ✅ 并行优化：构建空间哈希（Lock-Free 优化）
+//  并行优化：构建空间哈希（Lock-Free 优化）
 void Slime::buildSpatialHash() {
     m_spatialHash.clear();
     
-    // ✅ 第一步：并行计算所有粒子的哈希键
+    //  第一步：并行计算所有粒子的哈希键
     std::vector<std::pair<int, int>> hashKeyPairs(m_particles.size());
     
     std::for_each(std::execution::par_unseq, m_particleIndices.begin(), m_particleIndices.end(),
@@ -171,30 +228,30 @@ void Slime::buildSpatialHash() {
             hashKeyPairs[i] = {key, i};
         });
     
-    // ✅ 第二步：串行合并到哈希表（这部分很快，不需要并行）
+    //  第二步：串行合并到哈希表（这部分很快，不需要并行）
     for (const auto& [key, idx] : hashKeyPairs) {
         m_spatialHash[key].push_back(idx);
     }
 }
 
-// ✅ 并行优化：更新邻居（删除串行代码）
+//  并行优化：更新邻居（删除串行代码）
 void Slime::updateNeighbors() {
     const float h = m_particleRadius * 4.0f;
-    const float h_sq = h * h;  // ✅ 优化：避免重复计算平方根
+    const float h_sq = h * h;  //  优化：避免重复计算平方根
     
-    // ✅ 纯并行处理
+    //  纯并行处理
     std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
         [this, h_sq](int i) {
             m_neighbors[i].clear();
             std::vector<int> candidates = getNeighbors(m_particles[i].predictedPos);
             
-            // ✅ 预分配空间，减少动态分配
+            //  预分配空间，减少动态分配
             m_neighbors[i].reserve(32);
             
             for (int j : candidates) {
                 if (i == j) continue;
                 
-                // ✅ 优化：先用平方距离判断，避免 sqrt
+                //  优化：先用平方距离判断，避免 sqrt
                 glm::vec3 diff = m_particles[i].predictedPos - m_particles[j].predictedPos;
                 float dist_sq = glm::dot(diff, diff);
                 
@@ -205,30 +262,30 @@ void Slime::updateNeighbors() {
         });
 }
 
-// ✅ 并行优化：约束求解（删除串行代码）
+//  并行优化：约束求解（删除串行代码）
 void Slime::solveConstraints() {
-    // ✅ 第一步：并行计算 lambda
+    //  第一步：并行计算 lambda
     std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
         [this](int i) {
             m_particles[i].lambda = computeLambda(i);
         });
     
-    // ✅ 第二步：并行计算位置修正
+    //  第二步：并行计算位置修正
     std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
         [this](int i) {
             m_particles[i].deltaPos = computeDeltaP(i);
         });
     
-    // ✅ 第三步：并行应用位置修正（使用 par_unseq 向量化）
+    //  第三步：并行应用位置修正（使用 par_unseq 向量化）
     std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
         [](Particle& particle) {
             particle.predictedPos += particle.deltaPos;
         });
 }
 
-// ✅ 并行优化：更新速度（删除串行代码）
+//  并行优化：更新速度（删除串行代码）
 void Slime::updateVelocities(float dt) {
-    const float invDt = 1.0f / dt;  // ✅ 优化：避免除法
+    const float invDt = 1.0f / dt;  //  优化：避免除法
     
     std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
         [invDt](Particle& particle) {
@@ -237,12 +294,12 @@ void Slime::updateVelocities(float dt) {
         });
 }
 
-// ✅ 并行优化：向心力（删除串行代码，优化缓存局部性）
+//  并行优化：向心力（删除串行代码，优化缓存局部性）
 void Slime::applyCohesionForce() {
     const glm::vec3 centerOfMass = getCenterOfMass();
     const glm::vec3 targetCenter = centerOfMass + glm::vec3(0.0f, m_slimeRadius * 0.3f, 0.0f);
     
-    // ✅ 预计算常量
+    // 预计算常量
     const float radiusThreshold = m_slimeRadius * 0.5f;
     const float invRadius = 1.0f / m_slimeRadius;
     const float idealDist = m_particleRadius * 2.2f;
@@ -250,7 +307,7 @@ void Slime::applyCohesionForce() {
     const float attractionRange = maxAttractionDist - idealDist;
     const float maxForce = m_cohesionStrength * 3.0f;
     
-    // ✅ 纯并行处理
+    //  纯并行处理
     std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
         [this, centerOfMass, targetCenter, radiusThreshold, invRadius, 
          idealDist, maxAttractionDist, attractionRange, maxForce](int i) {
@@ -299,7 +356,7 @@ void Slime::applyCohesionForce() {
         });
 }
 
-// ✅ 并行优化：粘性（删除串行代码）
+//  并行优化：粘性（删除串行代码）
 void Slime::applyViscosity() {
     std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
         [this](int i) {
@@ -308,12 +365,12 @@ void Slime::applyViscosity() {
             
             if (neighborCount == 0) return;
             
-            // ✅ 优化：累加邻居速度差
+            //  优化：累加邻居速度差
             for (int neighborIdx : m_neighbors[i]) {
                 velocityChange += m_particles[neighborIdx].velocity - m_particles[i].velocity;
             }
             
-            // ✅ 优化：一次除法
+            //  优化：一次除法
             velocityChange /= static_cast<float>(neighborCount);
             m_particles[i].velocity += m_viscosity * velocityChange;
         });
@@ -402,7 +459,7 @@ int Slime::getHashKey(const glm::vec3& pos) {
 
 std::vector<int> Slime::getNeighbors(const glm::vec3& pos) {
     std::vector<int> neighbors;
-    neighbors.reserve(64);  // ✅ 预分配空间
+    neighbors.reserve(64);  //  预分配空间
     
     // 检查当前格子和周围26个格子
     for (int dx = -1; dx <= 1; ++dx) {
@@ -422,7 +479,7 @@ std::vector<int> Slime::getNeighbors(const glm::vec3& pos) {
     return neighbors;
 }
 
-// ✅ 优化：并行碰撞检测（分块处理）
+//  优化：并行碰撞检测（分块处理）
 void Slime::handlePhysicsCollisions() {
     if (!m_engine) return;
     
@@ -434,7 +491,7 @@ void Slime::handlePhysicsCollisions() {
     const float friction = 0.4f;
     const float minSpeed = 0.01f;  // 最小速度阈值
     
-    // ✅ 并行处理碰撞检测
+    //  并行处理碰撞检测
     std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
         [this, world, checkDistance, restitution, friction, minSpeed](int idx) {
             auto& particle = m_particles[idx];
@@ -494,39 +551,128 @@ void Slime::handlePhysicsCollisions() {
         });
 }
 
-// ✅ 优化：并行更新实例缓冲
+//  优化：并行更新实例缓冲
 void Slime::updateInstanceBuffer() {
     std::vector<float> instanceData(m_particles.size() * 16);
     
-    // ✅ 并行生成矩阵数据
+    //  并行生成矩阵数据
     std::for_each(std::execution::par_unseq, m_particleIndices.begin(), m_particleIndices.end(),
         [this, &instanceData](int i) {
             glm::mat4 matrix = glm::translate(glm::mat4(1.0f), m_particles[i].position);
             memcpy(&instanceData[i * 16], glm::value_ptr(matrix), 16 * sizeof(float));
         });
     
-    // ✅ 使用封装的 update 方法更新GPU缓冲
+    //  使用封装的 update 方法更新GPU缓冲
     m_instanceVBO->update(instanceData, 0);
 }
 
 void Slime::render() const {
-    if (!m_shader) return;
+    if (m_renderMode == RenderMode::PARTICLES) {
+        // 粒子球体模式
+        if (!m_particleShader) return;
+        
+        m_particleShader->begin();
+        
+        // 绑定纹理（如果有）
+        if (m_texture > 0) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, m_texture);
+        }
+        
+        // 设置史莱姆颜色
+        m_particleShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+        
+        // 实例化绘制所有粒子
+        m_particleVAO->drawInstanced(m_particles.size(), m_sphereIndexCount);
+        
+        m_particleShader->end();
+    } else {
+        // 网格模式
+        if (!m_meshShader || m_meshIndexCount == 0) return;
+        
+        // ✅ 确保深度测试启用
+        glEnable(GL_DEPTH_TEST);
+        
+        // 启用混合以支持半透明
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        m_meshShader->begin();
+        
+        // 设置模型矩阵（单位矩阵，因为顶点已经在世界空间）
+        m_meshShader->set("uModel", glm::mat4(1.0f));
+        
+        // 设置史莱姆颜色
+        m_meshShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+        
+        // ✅ 使用 VAO 封装的 draw 方法绘制（自动处理绑定/解绑）
+        m_meshVAO->draw(GL_TRIANGLES, m_meshIndexCount);
+        
+        m_meshShader->end();
+        
+        glDisable(GL_BLEND);
+    }
+}
+
+void Slime::toggleRenderMode() {
+    if (m_renderMode == RenderMode::PARTICLES) {
+        m_renderMode = RenderMode::MESH;
+        std::cout << "[Slime] 切换到网格渲染模式" << std::endl;
+    } else {
+        m_renderMode = RenderMode::PARTICLES;
+        std::cout << "[Slime] 切换到粒子渲染模式" << std::endl;
+    }
+}
+
+void Slime::generateMesh() {
+    // 1. 提取粒子位置
+    std::vector<glm::vec3> positions(m_particles.size());
+    std::transform(std::execution::par_unseq,
+                   m_particles.begin(), m_particles.end(),
+                   positions.begin(),
+                   [](const Particle& p) { return p.position; });
     
-    m_shader->begin();
+    // 2. 构建密度场
+    m_densityField->buildFromParticles(positions, m_particleRadius);
     
-    // 绑定纹理（如果有）
-    if (m_texture > 0) {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, m_texture);
+    // 3. 应用模糊
+    m_densityField->applyBlur(m_blurIterations);
+    
+    // 4. 使用 Marching Cubes 生成网格
+    m_currentMesh = m_marchingCubes->generateMesh(*m_densityField, m_isoLevel);
+}
+
+void Slime::updateMeshBuffers() {
+    if (m_currentMesh.vertexCount() == 0) {
+        m_meshIndexCount = 0;
+        return;
     }
     
-    // 设置史莱姆颜色
-    m_shader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+    // 组合位置和法线数据（交错存储)
+    std::vector<float> vertexData;
+    vertexData.reserve(m_currentMesh.vertexCount() * 6);  // 每个顶点6个float (pos + normal)
     
-    // 实例化绘制所有粒子
-    m_vao->drawInstanced(m_particles.size(), m_sphereIndexCount);
+    for (size_t i = 0; i < m_currentMesh.vertexCount(); ++i) {
+        const auto& pos = m_currentMesh.positions[i];
+        const auto& normal = m_currentMesh.normals[i];
+        
+        vertexData.push_back(pos.x);
+        vertexData.push_back(pos.y);
+        vertexData.push_back(pos.z);
+        vertexData.push_back(normal.x);
+        vertexData.push_back(normal.y);
+        vertexData.push_back(normal.z);
+    }
     
-    m_shader->end();
+    // ✅ 使用封装的 resize 方法更新缓冲区（支持动态大小调整）
+    m_meshVBO->resize(vertexData);
+    m_meshEBO->resize(m_currentMesh.indices);
+    
+    m_meshIndexCount = m_currentMesh.indices.size();
+    
+    std::cout << "[Slime] 网格更新：" << m_currentMesh.vertexCount() << " 顶点, " 
+              << m_currentMesh.triangleCount() << " 三角形, "
+              << m_meshIndexCount << " 索引" << std::endl;
 }
 
 bool Slime::collideWith(const Object& other) const {
@@ -538,7 +684,7 @@ void Slime::applyForce(const glm::vec3& force) {
     const float forcePerParticle = 1.0f / static_cast<float>(m_particles.size());
     const glm::vec3 distributedForce = force * forcePerParticle;
     
-    // ✅ 并行施加力
+    //  并行施加力
     std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
         [distributedForce](Particle& particle) {
             particle.force += distributedForce;
@@ -546,7 +692,7 @@ void Slime::applyForce(const glm::vec3& force) {
 }
 
 glm::vec3 Slime::getCenterOfMass() const {
-    // ✅ 使用并行循环累加位置，然后求平均
+    //  使用并行循环累加位置，然后求平均
     std::vector<glm::vec3> positions(m_particles.size());
     
     // 提取所有粒子位置

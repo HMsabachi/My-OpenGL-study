@@ -5,6 +5,8 @@
 #include "../object.h"
 #include "../../glFrameWork/shader.h"
 #include "../../glFrameWork/buffers.h"
+#include "densityField.h"
+#include "marchingCubes.h"
 #include <glm/glm.hpp>
 #include <vector>
 #include <memory>
@@ -14,9 +16,16 @@
  * 史莱姆类 - 基于PBF（Position Based Fluids）算法的液体模拟
  * 使用物理查询API检测碰撞，保持流动性
  * ✅ 使用 CPU 多线程并行计算，榨干CPU性能
+ * ✅ 支持粒子球体和动态网格两种渲染模式
  */
 class Slime : public Object {
 public:
+    // 渲染模式枚举
+    enum class RenderMode {
+        PARTICLES,  // 粒子球体模式
+        MESH        // 动态网格模式
+    };
+
     // 粒子结构
     struct Particle {
         glm::vec3 position;      // 当前位置
@@ -33,11 +42,12 @@ public:
      * @param position 初始位置
      * @param radius 史莱姆半径
      * @param particleCount 粒子数量
-     * @param shader 渲染shader
+     * @param particleShader 粒子渲染shader
+     * @param meshShader 网格渲染shader
      * @param texture 纹理ID
      */
     Slime(Engine* engine, const glm::vec3& position, float radius, 
-          int particleCount, Shader* shader, GLuint texture);
+          int particleCount, Shader* particleShader, Shader* meshShader, GLuint texture);
     
     virtual ~Slime();
     
@@ -61,6 +71,16 @@ public:
     const std::vector<std::vector<int>>& getNeighbors() const { return m_neighbors; }
     float getSlimeRadius() const { return m_slimeRadius; }
     
+    // ✅ 新增：渲染模式控制
+    void setRenderMode(RenderMode mode) { m_renderMode = mode; }
+    RenderMode getRenderMode() const { return m_renderMode; }
+    void toggleRenderMode();
+    
+    // ✅ 新增：网格生成参数
+    void setMeshResolution(int resolution) { m_meshResolution = resolution; }
+    void setIsoLevel(float level) { m_isoLevel = level; }
+    void setBlurIterations(int iterations) { m_blurIterations = iterations; }
+
 private:
     // PBF算法步骤（全部并行优化）
     void applyExternalForces(float dt);
@@ -68,54 +88,79 @@ private:
     void updateNeighbors();
     void solveConstraints();
     void updateVelocities(float dt);
-    void applyCohesionForce();  // 向心力
+    void applyCohesionForce();
     void applyViscosity();
+    void handlePhysicsCollisions();
     
-    // 辅助函数
+    // 密度计算
     float computeDensity(int particleIdx);
     float computeLambda(int particleIdx);
     glm::vec3 computeDeltaP(int particleIdx);
-    glm::vec3 spikyGradient(const glm::vec3& r, float h);
-    float poly6Kernel(float r, float h);
     
-    // 网格空间加速邻居搜索
+    // 空间哈希
     void buildSpatialHash();
-    std::vector<int> getNeighbors(const glm::vec3& pos);
     int getHashKey(const glm::vec3& pos);
+    std::vector<int> getNeighbors(const glm::vec3& pos);
     
     // 渲染相关
     void initRenderData();
     void updateInstanceBuffer();
     
-    // ✅ 物理碰撞检测（并行优化）
-    void handlePhysicsCollisions();
+    // ✅ 新增：网格生成
+    void generateMesh();
+    void updateMeshBuffers();
+    
+    // SPH核函数
+    float poly6Kernel(float r, float h);
+    glm::vec3 spikyGradient(const glm::vec3& r, float h);
+    
+private:
+    // PBF 参数
+    float m_slimeRadius;
+    float m_particleRadius;
+    float m_restDensity;
+    float m_epsilon;
+    int m_solverIterations;
+    float m_cohesionStrength;
+    float m_viscosity;
     
     // 粒子数据
     std::vector<Particle> m_particles;
-    std::vector<std::vector<int>> m_neighbors;  // 每个粒子的邻居列表
-    std::vector<int> m_particleIndices;         // ✅ 粒子索引数组（用于并行遍历）
+    std::vector<std::vector<int>> m_neighbors;
+    std::vector<int> m_particleIndices;
     
-    // 空间哈希表（用于加速邻居搜索）
+    // 空间哈希
     std::unordered_map<int, std::vector<int>> m_spatialHash;
     float m_cellSize;
     
-    // PBF参数
-    float m_slimeRadius;          // 史莱姆整体半径
-    float m_particleRadius;       // 单个粒子半径
-    float m_restDensity;          // 静止密度
-    float m_epsilon;              // 松弛参数
-    int m_solverIterations;       // 求解器迭代次数
-    float m_cohesionStrength;     // 向心力强度
-    float m_viscosity;            // 粘性系数
-    
-    // 渲染数据
-    Shader* m_shader;
+    // 渲染数据（粒子模式）
+    Shader* m_particleShader;
     GLuint m_texture;
-    VAO* m_vao;
+    VAO* m_particleVAO;
     std::shared_ptr<Buffer<float>> m_sphereVBO;
     std::shared_ptr<Buffer<unsigned int>> m_sphereEBO;
-    std::shared_ptr<Buffer<float>> m_instanceVBO;  // 实例化缓冲（float数组）
-    int m_sphereIndexCount;
+    std::shared_ptr<Buffer<float>> m_instanceVBO;
+    size_t m_sphereIndexCount;
+    
+    // ✅ 新增：网格渲染数据
+    Shader* m_meshShader;
+    VAO* m_meshVAO;
+    std::shared_ptr<Buffer<float>> m_meshVBO;  // 存储位置和法线
+    std::shared_ptr<Buffer<unsigned int>> m_meshEBO;
+    size_t m_meshIndexCount;
+    
+    // ✅ 新增：网格生成
+    RenderMode m_renderMode;
+    DensityField* m_densityField;
+    MarchingCubes* m_marchingCubes;
+    MeshData m_currentMesh;
+    
+    // 网格生成参数
+    int m_meshResolution;      // 密度场分辨率
+    float m_isoLevel;          // 等值面阈值
+    int m_blurIterations;      // 模糊迭代次数
+    float m_meshUpdateTimer;   // 网格更新计时器
+    float m_meshUpdateInterval; // 网格更新间隔（秒）
 };
 
 #endif // SLIME_H

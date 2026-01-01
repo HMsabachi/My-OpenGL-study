@@ -202,6 +202,12 @@ void Engine::setupDemoData()
     slimeShader->begin();
     slimeShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
     slimeShader->end();
+    
+    // 配置 slime_mesh shader
+    auto* slimeMeshShader = shaderManager->getShader("slime_mesh");
+    slimeMeshShader->begin();
+    slimeMeshShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+    slimeMeshShader->end();
 
     // 设置相机
     camera->setFOV(60.0f);
@@ -250,7 +256,10 @@ void Engine::setupDemoData()
 
     
     // 创建史莱姆
-    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 1.5f, 500, slimeShader, 0);
+    auto* slimeParticleShader = shaderManager->getShader("slime");
+    auto* slimeMeshShaderPtr = shaderManager->getShader("slime_mesh");
+    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 1.5f, 800, 
+                               slimeParticleShader, slimeMeshShaderPtr, 0);
     
     // 史莱姆参数
     mySlime->setRestDensity(70.0f);         // 密度
@@ -288,7 +297,7 @@ void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
     sphereShader->setMat4("uProjection", projectionMatrix);
     sphereShader->end();
     
-    // 更新 slime shader
+    // 更新 slime shader (粒子模式)
     auto* slimeShader = shaderManager->getShader("slime");
     slimeShader->begin();
     slimeShader->setMat4("uView", viewMatrix);
@@ -296,6 +305,15 @@ void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
     slimeShader->set("uCameraPos", camera->getPosition());
     slimeShader->setFloat("uTime", static_cast<float>(glfwGetTime()));
     slimeShader->end();
+    
+    // 更新 slime_mesh shader (网格模式)
+    auto* slimeMeshShader = shaderManager->getShader("slime_mesh");
+    slimeMeshShader->begin();
+    slimeMeshShader->setMat4("uView", viewMatrix);
+    slimeMeshShader->setMat4("uProjection", projectionMatrix);
+    slimeMeshShader->set("uCameraPos", camera->getPosition());
+    slimeMeshShader->setFloat("uTime", static_cast<float>(glfwGetTime()));
+    slimeMeshShader->end();
 }
 
 void Engine::render()
@@ -370,6 +388,16 @@ void Engine::keyCallback(int key, int action, int mods)
             }
             break;
         }
+        
+        case GLFW_KEY_M:
+        {
+            // 按 M 键切换渲染模式（粒子/网格）
+            Slime* slime = dynamic_cast<Slime*>(self->playerController->getControlledObject());
+            if (slime) {
+                slime->toggleRenderMode();
+            }
+            break;
+        }
     }
 
 }int Engine::init() {
@@ -382,6 +410,7 @@ void Engine::keyCallback(int key, int action, int mods)
     shaderManager->loadShader("basic", "assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
     shaderManager->loadShader("sphere", "assets/shaders/sphere_vertex.glsl", "assets/shaders/sphere_fragment.glsl");
     shaderManager->loadShader("slime", "assets/shaders/slime_vertex.glsl", "assets/shaders/slime_fragment.glsl");
+    shaderManager->loadShader("slime_mesh", "assets/shaders/slime_mesh_vertex.glsl", "assets/shaders/slime_mesh_fragment.glsl");
 
 	myApp->setKeyboardCallback(keyCallback);
 

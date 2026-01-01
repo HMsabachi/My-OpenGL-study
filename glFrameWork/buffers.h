@@ -104,6 +104,18 @@ public:
     }
     
     /**
+     * @brief 重新分配缓冲区大小并上传新数据（用于大小变化的场景）
+     * @param data 新数据向量。
+     */
+    void resize(const std::vector<T>& data) {
+        bind();
+        glBufferData(m_target, data.size() * sizeof(T), data.data(), m_usage);
+        m_size = data.size() * sizeof(T);
+        m_count = data.size();
+        unbind();
+    }
+    
+    /**
      * @brief 获取数据大小（字节）。
      */
     size_t size() const { return m_size; }
@@ -338,7 +350,7 @@ private:
         case 'i': return GL_INT;
         case 'u': return GL_UNSIGNED_INT;  // ui -> u for simplicity, or adjust
         case 's': return GL_SHORT;
-        case 'h': return GL_UNSIGNED_SHORT;  // us -> h for half? Wait, us -> u short, but simplify to 'u' for uint, 'i' for int
+        case 'h': return GL_UNSIGNED_SHORT;  // us -> u short, but simplify to 'u' for uint, 'i' for int
         case 'b': return GL_BYTE;
         case 'c': return GL_UNSIGNED_BYTE;  // ub -> c for char?
         default: throw std::invalid_argument("Unsupported type char");

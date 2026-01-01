@@ -84,27 +84,10 @@ private:
     int m_minClusterSize;                  // 最小集群大小
 
     // 内部方法
-    
-    /**
-     * @brief 检测并划分粒子集群（使用并查集算法）
-     */
     void detectClusters();
-
-    /**
-     * @brief 为每个集群施加独立的向心力
-     */
-    void applyCohesionForces();
-
-    /**
-     * @brief 计算集群的质心和半径
-     * @param cluster 集群引用
-     */
-    void computeClusterProperties(Cluster& cluster);
-
-    /**
-     * @brief 找到主集群（最大的集群）
-     */
     void findMainCluster();
+    void applyCohesionForces();
+    void computeClusterProperties(Cluster& cluster);
 };
 
 #endif // SLIME_CONTROLLER_H
