@@ -12,6 +12,7 @@
 #include <numeric>    // ✅ std::iota
 #include <thread>     // ✅ 线程支持
 #include <mutex>      // ✅ 互斥锁
+#include <atomic>     // ✅ 原子操作
 
 // 常量
 const float PI = 3.14159265359f;
@@ -28,8 +29,7 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
       m_viscosity(0.05f),
       m_shader(shader),
       m_texture(texture),
-      m_sphereIndexCount(0),
-      m_useParallel(true)  // ✅ 默认启用并行
+      m_sphereIndexCount(0)
 {
     // 初始化粒子
     m_particles.resize(particleCount);
@@ -67,8 +67,8 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
     // 初始化渲染数据
     initRenderData();
     
-    std::cout << "[Slime] 史莱姆创建成功：" << particleCount << " 个粒子 | 并行计算：" 
-              << (m_useParallel ? "启用" : "禁用") 
+    // ✅ 更新日志输出
+    std::cout << "[Slime] 史莱姆创建成功：" << particleCount << " 个粒子 | 并行计算：启用" 
               << " | CPU 核心数：" << std::thread::hardware_concurrency() << std::endl;
 }
 
@@ -109,7 +109,7 @@ void Slime::update(float deltaTime) {
     const float maxDt = 0.016f;  // 约60fps
     deltaTime = std::min(deltaTime, maxDt);
     
-    // PBF模拟步骤（并行优化）
+    // ✅ PBF模拟步骤（纯并行优化）
     applyExternalForces(deltaTime);
     predictPositions(deltaTime);
     
@@ -136,282 +136,187 @@ void Slime::update(float deltaTime) {
     m_position = getCenterOfMass();
 }
 
-// ✅ 并行优化：施加外力
+// ✅ 并行优化：施加外力（删除串行代码）
 void Slime::applyExternalForces(float dt) {
-    glm::vec3 gravity(0.0f, -9.81f, 0.0f);
+    const glm::vec3 gravity(0.0f, -9.81f, 0.0f);
     
-    if (m_useParallel) {
-        // 并行处理每个粒子
-        std::for_each(std::execution::par, m_particles.begin(), m_particles.end(),
-            [&gravity](Particle& particle) {
-                particle.force = gravity + particle.force;
-            });
-    } else {
-        // 串行处理
-        for (auto& particle : m_particles) {
-            particle.force = gravity + particle.force;
-        }
-    }
+    // ✅ 纯并行处理
+    std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
+        [gravity](Particle& particle) {
+            particle.force += gravity;
+        });
 }
 
-// ✅ 并行优化：预测位置
+// ✅ 并行优化：预测位置（删除串行代码）
 void Slime::predictPositions(float dt) {
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particles.begin(), m_particles.end(),
-            [dt](Particle& particle) {
-                particle.velocity += particle.force * dt;
-                particle.predictedPos = particle.position + particle.velocity * dt;
-                particle.force = glm::vec3(0.0f);
-            });
-    } else {
-        for (auto& particle : m_particles) {
+    // ✅ 使用 par_unseq 进一步优化，允许向量化
+    std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
+        [dt](Particle& particle) {
             particle.velocity += particle.force * dt;
             particle.predictedPos = particle.position + particle.velocity * dt;
             particle.force = glm::vec3(0.0f);
-        }
-    }
+        });
 }
 
-// ✅ 并行优化：构建空间哈希（需要线程安全）
+// ✅ 并行优化：构建空间哈希（Lock-Free 优化）
 void Slime::buildSpatialHash() {
     m_spatialHash.clear();
     
-    if (m_useParallel) {
-        // ✅ 方案：先收集所有哈希键，再合并
-        std::mutex hashMutex;
-        
-        std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
-            [this, &hashMutex](int i) {
-                int key = getHashKey(m_particles[i].predictedPos);
-                
-                // 线程安全地插入
-                std::lock_guard<std::mutex> lock(hashMutex);
-                m_spatialHash[key].push_back(i);
-            });
-    } else {
-        for (int i = 0; i < m_particles.size(); ++i) {
+    // ✅ 第一步：并行计算所有粒子的哈希键
+    std::vector<std::pair<int, int>> hashKeyPairs(m_particles.size());
+    
+    std::for_each(std::execution::par_unseq, m_particleIndices.begin(), m_particleIndices.end(),
+        [this, &hashKeyPairs](int i) {
             int key = getHashKey(m_particles[i].predictedPos);
-            m_spatialHash[key].push_back(i);
-        }
+            hashKeyPairs[i] = {key, i};
+        });
+    
+    // ✅ 第二步：串行合并到哈希表（这部分很快，不需要并行）
+    for (const auto& [key, idx] : hashKeyPairs) {
+        m_spatialHash[key].push_back(idx);
     }
 }
 
-// ✅ 并行优化：更新邻居
+// ✅ 并行优化：更新邻居（删除串行代码）
 void Slime::updateNeighbors() {
-    float h = m_particleRadius * 4.0f;
+    const float h = m_particleRadius * 4.0f;
+    const float h_sq = h * h;  // ✅ 优化：避免重复计算平方根
     
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
-            [this, h](int i) {
-                m_neighbors[i].clear();
-                std::vector<int> candidates = getNeighbors(m_particles[i].predictedPos);
-                
-                for (int j : candidates) {
-                    if (i == j) continue;
-                    float dist = glm::length(m_particles[i].predictedPos - m_particles[j].predictedPos);
-                    if (dist < h) {
-                        m_neighbors[i].push_back(j);
-                    }
-                }
-            });
-    } else {
-        for (int i = 0; i < m_particles.size(); ++i) {
+    // ✅ 纯并行处理
+    std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
+        [this, h_sq](int i) {
             m_neighbors[i].clear();
             std::vector<int> candidates = getNeighbors(m_particles[i].predictedPos);
             
+            // ✅ 预分配空间，减少动态分配
+            m_neighbors[i].reserve(32);
+            
             for (int j : candidates) {
                 if (i == j) continue;
-                float dist = glm::length(m_particles[i].predictedPos - m_particles[j].predictedPos);
-                if (dist < h) {
+                
+                // ✅ 优化：先用平方距离判断，避免 sqrt
+                glm::vec3 diff = m_particles[i].predictedPos - m_particles[j].predictedPos;
+                float dist_sq = glm::dot(diff, diff);
+                
+                if (dist_sq < h_sq) {
                     m_neighbors[i].push_back(j);
                 }
             }
-        }
-    }
+        });
 }
 
-// ✅ 并行优化：约束求解
+// ✅ 并行优化：约束求解（删除串行代码）
 void Slime::solveConstraints() {
-    // 计算 lambda（可并行）
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
-            [this](int i) {
-                m_particles[i].lambda = computeLambda(i);
-            });
-    } else {
-        for (int i = 0; i < m_particles.size(); ++i) {
+    // ✅ 第一步：并行计算 lambda
+    std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
+        [this](int i) {
             m_particles[i].lambda = computeLambda(i);
-        }
-    }
+        });
     
-    // 计算位置修正（可并行）
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
-            [this](int i) {
-                m_particles[i].deltaPos = computeDeltaP(i);
-            });
-    } else {
-        for (int i = 0; i < m_particles.size(); ++i) {
+    // ✅ 第二步：并行计算位置修正
+    std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
+        [this](int i) {
             m_particles[i].deltaPos = computeDeltaP(i);
-        }
-    }
+        });
     
-    // 应用位置修正（可并行）
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particles.begin(), m_particles.end(),
-            [](Particle& particle) {
-                particle.predictedPos += particle.deltaPos;
-            });
-    } else {
-        for (auto& particle : m_particles) {
+    // ✅ 第三步：并行应用位置修正（使用 par_unseq 向量化）
+    std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
+        [](Particle& particle) {
             particle.predictedPos += particle.deltaPos;
-        }
-    }
+        });
 }
 
-// ✅ 并行优化：更新速度
+// ✅ 并行优化：更新速度（删除串行代码）
 void Slime::updateVelocities(float dt) {
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particles.begin(), m_particles.end(),
-            [dt](Particle& particle) {
-                particle.velocity = (particle.predictedPos - particle.position) / dt;
-                particle.position = particle.predictedPos;
-            });
-    } else {
-        for (auto& particle : m_particles) {
-            particle.velocity = (particle.predictedPos - particle.position) / dt;
+    const float invDt = 1.0f / dt;  // ✅ 优化：避免除法
+    
+    std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
+        [invDt](Particle& particle) {
+            particle.velocity = (particle.predictedPos - particle.position) * invDt;
             particle.position = particle.predictedPos;
-        }
-    }
+        });
 }
 
-// ✅ 并行优化：向心力
+// ✅ 并行优化：向心力（删除串行代码，优化缓存局部性）
 void Slime::applyCohesionForce() {
-    glm::vec3 centerOfMass = getCenterOfMass();
-    glm::vec3 targetCenter = centerOfMass + glm::vec3(0.0f, m_slimeRadius * 0.3f, 0.0f);
+    const glm::vec3 centerOfMass = getCenterOfMass();
+    const glm::vec3 targetCenter = centerOfMass + glm::vec3(0.0f, m_slimeRadius * 0.3f, 0.0f);
     
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
-            [this, centerOfMass, targetCenter](int i) {
-                auto& particle = m_particles[i];
-                glm::vec3 toTarget = targetCenter - particle.position;
-                float dist = glm::length(toTarget);
-                
-                if (dist < 0.001f) return;
-                
-                float distanceFromCenter = glm::length(particle.position - centerOfMass);
-                float heightFactor = (particle.position.y - centerOfMass.y) / m_slimeRadius;
-                heightFactor = glm::clamp(heightFactor, -1.0f, 1.0f);
-                float verticalMultiplier = 1.0f + heightFactor * 1.5f;
-                
-                if (distanceFromCenter > m_slimeRadius * 0.5f) {
-                    float excessDist = distanceFromCenter - m_slimeRadius * 0.5f;
-                    float forceMagnitude = m_cohesionStrength * (excessDist / m_slimeRadius) * verticalMultiplier;
-                    forceMagnitude = glm::min(forceMagnitude, m_cohesionStrength * 3.0f);
-                    particle.force += glm::normalize(toTarget) * forceMagnitude;
-                }
-                
-                // 表面张力
-                for (int neighborIdx : m_neighbors[i]) {
-                    glm::vec3 toNeighbor = m_particles[neighborIdx].position - particle.position;
-                    float neighborDist = glm::length(toNeighbor);
-                    float idealDist = m_particleRadius * 2.2f;
-                    float maxAttractionDist = m_particleRadius * 3.5f;
-                    
-                    if (neighborDist > idealDist && neighborDist < maxAttractionDist) {
-                        float attractionStrength = 0.8f * (1.0f - (neighborDist - idealDist) / (maxAttractionDist - idealDist));
-                        particle.force += glm::normalize(toNeighbor) * attractionStrength;
-                    }
-                }
-                
-                // 向下挤压效果
-                if (heightFactor < -0.2f) {
-                    glm::vec3 radialDir = particle.position - centerOfMass;
-                    radialDir.y = 0;
-                    if (glm::length(radialDir) > 0.001f) {
-                        radialDir = glm::normalize(radialDir);
-                        float outwardForce = m_cohesionStrength * 0.5f * (-heightFactor - 0.2f);
-                        particle.force += radialDir * outwardForce;
-                    }
-                }
-            });
-    } else {
-        for (size_t i = 0; i < m_particles.size(); ++i) {
+    // ✅ 预计算常量
+    const float radiusThreshold = m_slimeRadius * 0.5f;
+    const float invRadius = 1.0f / m_slimeRadius;
+    const float idealDist = m_particleRadius * 2.2f;
+    const float maxAttractionDist = m_particleRadius * 3.5f;
+    const float attractionRange = maxAttractionDist - idealDist;
+    const float maxForce = m_cohesionStrength * 3.0f;
+    
+    // ✅ 纯并行处理
+    std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
+        [this, centerOfMass, targetCenter, radiusThreshold, invRadius, 
+         idealDist, maxAttractionDist, attractionRange, maxForce](int i) {
             auto& particle = m_particles[i];
             glm::vec3 toTarget = targetCenter - particle.position;
             float dist = glm::length(toTarget);
             
-            if (dist < 0.001f) continue;
+            if (dist < 0.001f) return;
             
             float distanceFromCenter = glm::length(particle.position - centerOfMass);
-            float heightFactor = (particle.position.y - centerOfMass.y) / m_slimeRadius;
+            float heightFactor = (particle.position.y - centerOfMass.y) * invRadius;
             heightFactor = glm::clamp(heightFactor, -1.0f, 1.0f);
             float verticalMultiplier = 1.0f + heightFactor * 1.5f;
             
-            if (distanceFromCenter > m_slimeRadius * 0.5f) {
-                float excessDist = distanceFromCenter - m_slimeRadius * 0.5f;
-                float forceMagnitude = m_cohesionStrength * (excessDist / m_slimeRadius) * verticalMultiplier;
-                forceMagnitude = glm::min(forceMagnitude, m_cohesionStrength * 3.0f);
+            // 向心力
+            if (distanceFromCenter > radiusThreshold) {
+                float excessDist = distanceFromCenter - radiusThreshold;
+                float forceMagnitude = m_cohesionStrength * (excessDist * invRadius) * verticalMultiplier;
+                forceMagnitude = glm::min(forceMagnitude, maxForce);
                 particle.force += glm::normalize(toTarget) * forceMagnitude;
             }
             
+            // 表面张力（邻居吸引）
             for (int neighborIdx : m_neighbors[i]) {
                 glm::vec3 toNeighbor = m_particles[neighborIdx].position - particle.position;
                 float neighborDist = glm::length(toNeighbor);
-                float idealDist = m_particleRadius * 2.2f;
-                float maxAttractionDist = m_particleRadius * 3.5f;
                 
                 if (neighborDist > idealDist && neighborDist < maxAttractionDist) {
-                    float attractionStrength = 0.8f * (1.0f - (neighborDist - idealDist) / (maxAttractionDist - idealDist));
+                    float attractionStrength = 0.8f * (1.0f - (neighborDist - idealDist) / attractionRange);
                     particle.force += glm::normalize(toNeighbor) * attractionStrength;
                 }
             }
             
+            // 向下挤压效果
             if (heightFactor < -0.2f) {
                 glm::vec3 radialDir = particle.position - centerOfMass;
                 radialDir.y = 0;
-                if (glm::length(radialDir) > 0.001f) {
-                    radialDir = glm::normalize(radialDir);
+                float radialLen = glm::length(radialDir);
+                
+                if (radialLen > 0.001f) {
+                    radialDir /= radialLen;  // normalize
                     float outwardForce = m_cohesionStrength * 0.5f * (-heightFactor - 0.2f);
                     particle.force += radialDir * outwardForce;
                 }
             }
-        }
-    }
+        });
 }
 
-// ✅ 并行优化：粘性
+// ✅ 并行优化：粘性（删除串行代码）
 void Slime::applyViscosity() {
-    if (m_useParallel) {
-        std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
-            [this](int i) {
-                glm::vec3 velocityChange(0.0f);
-                
-                for (int neighborIdx : m_neighbors[i]) {
-                    glm::vec3 velocityDiff = m_particles[neighborIdx].velocity - m_particles[i].velocity;
-                    velocityChange += velocityDiff;
-                }
-                
-                if (m_neighbors[i].size() > 0) {
-                    velocityChange /= static_cast<float>(m_neighbors[i].size());
-                    m_particles[i].velocity += m_viscosity * velocityChange;
-                }
-            });
-    } else {
-        for (int i = 0; i < m_particles.size(); ++i) {
+    std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
+        [this](int i) {
             glm::vec3 velocityChange(0.0f);
+            int neighborCount = m_neighbors[i].size();
             
+            if (neighborCount == 0) return;
+            
+            // ✅ 优化：累加邻居速度差
             for (int neighborIdx : m_neighbors[i]) {
-                glm::vec3 velocityDiff = m_particles[neighborIdx].velocity - m_particles[i].velocity;
-                velocityChange += velocityDiff;
+                velocityChange += m_particles[neighborIdx].velocity - m_particles[i].velocity;
             }
             
-            if (m_neighbors[i].size() > 0) {
-                velocityChange /= static_cast<float>(m_neighbors[i].size());
-                m_particles[i].velocity += m_viscosity * velocityChange;
-            }
-        }
-    }
+            // ✅ 优化：一次除法
+            velocityChange /= static_cast<float>(neighborCount);
+            m_particles[i].velocity += m_viscosity * velocityChange;
+        });
 }
 
 float Slime::poly6Kernel(float r, float h) {
@@ -451,7 +356,6 @@ float Slime::computeLambda(int particleIdx) {
     float density = computeDensity(particleIdx);
     float C = density / m_restDensity - 1.0f;
     
-    // 移除条件限制，允许双向约束
     if (std::abs(C) < 0.0001f) {
         return 0.0f;
     }
@@ -498,6 +402,7 @@ int Slime::getHashKey(const glm::vec3& pos) {
 
 std::vector<int> Slime::getNeighbors(const glm::vec3& pos) {
     std::vector<int> neighbors;
+    neighbors.reserve(64);  // ✅ 预分配空间
     
     // 检查当前格子和周围26个格子
     for (int dx = -1; dx <= 1; ++dx) {
@@ -506,10 +411,9 @@ std::vector<int> Slime::getNeighbors(const glm::vec3& pos) {
                 glm::vec3 offset = glm::vec3(dx, dy, dz) * m_cellSize;
                 int key = getHashKey(pos + offset);
                 
-                if (m_spatialHash.find(key) != m_spatialHash.end()) {
-                    for (int idx : m_spatialHash[key]) {
-                        neighbors.push_back(idx);
-                    }
+                auto it = m_spatialHash.find(key);
+                if (it != m_spatialHash.end()) {
+                    neighbors.insert(neighbors.end(), it->second.begin(), it->second.end());
                 }
             }
         }
@@ -518,85 +422,88 @@ std::vector<int> Slime::getNeighbors(const glm::vec3& pos) {
     return neighbors;
 }
 
+// ✅ 优化：并行碰撞检测（分块处理）
 void Slime::handlePhysicsCollisions() {
     if (!m_engine) return;
     
     auto* world = m_engine->getPhysicsWorld();
     if (!world) return;
     
-    const float checkDistance = m_particleRadius * 2.0f;  // 检测距离
-    const float restitution = 0.3f;  // 弹性系数
-    const float friction = 0.4f;     // 摩擦系数
+    const float checkDistance = m_particleRadius * 2.0f;
+    const float restitution = 0.3f;
+    const float friction = 0.4f;
+    const float minSpeed = 0.01f;  // 最小速度阈值
     
-    // ✅ 优化：只检测移动中的粒子
-    for (auto& particle : m_particles) {
-        float speed = glm::length(particle.velocity);
-        if (speed < 0.01f) continue;  // 静止粒子跳过
-        
-        // ✅ 关键改进：向速度方向发射射线，提前预测碰撞
-        glm::vec3 rayDir = glm::normalize(particle.velocity);
-        float rayLength = speed * 0.016f + checkDistance;  // 预测下一帧位置
-        
-        rp3d::Vector3 start(particle.position.x, particle.position.y, particle.position.z);
-        rp3d::Vector3 end = start + rp3d::Vector3(rayDir.x, rayDir.y, rayDir.z) * rayLength;
-        rp3d::Ray ray(start, end);
-        
-        // Raycast 回调
-        class SlimeRaycastCallback : public rp3d::RaycastCallback {
-        public:
-            bool hasHit = false;
-            glm::vec3 hitNormal;
-            glm::vec3 hitPoint;
-            float hitFraction = 1.0f;
+    // ✅ 并行处理碰撞检测
+    std::for_each(std::execution::par, m_particleIndices.begin(), m_particleIndices.end(),
+        [this, world, checkDistance, restitution, friction, minSpeed](int idx) {
+            auto& particle = m_particles[idx];
+            float speed = glm::length(particle.velocity);
             
-            virtual rp3d::decimal notifyRaycastHit(const rp3d::RaycastInfo& info) override {
-                if (info.hitFraction < hitFraction) {
-                    hasHit = true;
-                    hitNormal = glm::vec3(info.worldNormal.x, info.worldNormal.y, info.worldNormal.z);
-                    hitPoint = glm::vec3(info.worldPoint.x, info.worldPoint.y, info.worldPoint.z);
-                    hitFraction = info.hitFraction;
-                }
-                return info.hitFraction;  // 继续检测更近的碰撞
-            }
-        };
-        
-        SlimeRaycastCallback callback;
-        world->raycast(ray, &callback);
-        
-        if (callback.hasHit) {
-            // ✅ 计算穿透距离
-            float penetration = m_particleRadius - glm::length(callback.hitPoint - particle.position);
+            if (speed < minSpeed) return;  // 静止粒子跳过
             
-            if (penetration > 0) {
-                // ✅ 位置修正：推出碰撞体
-                particle.position += callback.hitNormal * penetration;
-                particle.predictedPos = particle.position;
+            // 向速度方向发射射线
+            glm::vec3 rayDir = glm::normalize(particle.velocity);
+            float rayLength = speed * 0.016f + checkDistance;
+            
+            rp3d::Vector3 start(particle.position.x, particle.position.y, particle.position.z);
+            rp3d::Vector3 end = start + rp3d::Vector3(rayDir.x, rayDir.y, rayDir.z) * rayLength;
+            rp3d::Ray ray(start, end);
+            
+            // Raycast 回调
+            class SlimeRaycastCallback : public rp3d::RaycastCallback {
+            public:
+                bool hasHit = false;
+                glm::vec3 hitNormal;
+                glm::vec3 hitPoint;
+                float hitFraction = 1.0f;
                 
-                // ✅ 速度修正：反弹 + 摩擦
-                float vn = glm::dot(particle.velocity, callback.hitNormal);
-                if (vn < 0) {
-                    // 法向速度：反弹
-                    glm::vec3 normalVel = vn * callback.hitNormal;
-                    particle.velocity -= (1.0f + restitution) * normalVel;
+                virtual rp3d::decimal notifyRaycastHit(const rp3d::RaycastInfo& info) override {
+                    if (info.hitFraction < hitFraction) {
+                        hasHit = true;
+                        hitNormal = glm::vec3(info.worldNormal.x, info.worldNormal.y, info.worldNormal.z);
+                        hitPoint = glm::vec3(info.worldPoint.x, info.worldPoint.y, info.worldPoint.z);
+                        hitFraction = info.hitFraction;
+                    }
+                    return info.hitFraction;
+                }
+            };
+            
+            SlimeRaycastCallback callback;
+            world->raycast(ray, &callback);
+            
+            if (callback.hasHit) {
+                float penetration = m_particleRadius - glm::length(callback.hitPoint - particle.position);
+                
+                if (penetration > 0) {
+                    // 位置修正
+                    particle.position += callback.hitNormal * penetration;
+                    particle.predictedPos = particle.position;
                     
-                    // 切向速度：摩擦
-                    glm::vec3 tangentVel = particle.velocity - glm::dot(particle.velocity, callback.hitNormal) * callback.hitNormal;
-                    particle.velocity -= tangentVel * friction;
+                    // 速度修正
+                    float vn = glm::dot(particle.velocity, callback.hitNormal);
+                    if (vn < 0) {
+                        glm::vec3 normalVel = vn * callback.hitNormal;
+                        particle.velocity -= (1.0f + restitution) * normalVel;
+                        
+                        glm::vec3 tangentVel = particle.velocity - glm::dot(particle.velocity, callback.hitNormal) * callback.hitNormal;
+                        particle.velocity -= tangentVel * friction;
+                    }
                 }
             }
-        }
-    }
+        });
 }
 
+// ✅ 优化：并行更新实例缓冲
 void Slime::updateInstanceBuffer() {
-    // 更新所有粒子的变换矩阵
-    std::vector<float> instanceData(m_particles.size() * 16);  // mat4 = 16个float
+    std::vector<float> instanceData(m_particles.size() * 16);
     
-    for (size_t i = 0; i < m_particles.size(); ++i) {
-        glm::mat4 matrix = glm::translate(glm::mat4(1.0f), m_particles[i].position);
-        // 将矩阵数据复制到float数组
-        memcpy(&instanceData[i * 16], glm::value_ptr(matrix), 16 * sizeof(float));
-    }
+    // ✅ 并行生成矩阵数据
+    std::for_each(std::execution::par_unseq, m_particleIndices.begin(), m_particleIndices.end(),
+        [this, &instanceData](int i) {
+            glm::mat4 matrix = glm::translate(glm::mat4(1.0f), m_particles[i].position);
+            memcpy(&instanceData[i * 16], glm::value_ptr(matrix), 16 * sizeof(float));
+        });
     
     // 更新GPU缓冲
     m_instanceVBO->bind();
@@ -632,16 +539,34 @@ bool Slime::collideWith(const Object& other) const {
 }
 
 void Slime::applyForce(const glm::vec3& force) {
-    // ✅ 直接施加到粒子上，保持流动性
-    for (auto& particle : m_particles) {
-        particle.force += force / static_cast<float>(m_particles.size());
-    }
+    const float forcePerParticle = 1.0f / static_cast<float>(m_particles.size());
+    const glm::vec3 distributedForce = force * forcePerParticle;
+    
+    // ✅ 并行施加力
+    std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
+        [distributedForce](Particle& particle) {
+            particle.force += distributedForce;
+        });
 }
 
 glm::vec3 Slime::getCenterOfMass() const {
-    glm::vec3 center(0.0f);
-    for (const auto& particle : m_particles) {
-        center += particle.position;
-    }
+    // ✅ 使用并行循环累加位置，然后求平均
+    std::vector<glm::vec3> positions(m_particles.size());
+    
+    // 提取所有粒子位置
+    std::transform(std::execution::par_unseq,
+                   m_particles.begin(), m_particles.end(),
+                   positions.begin(),
+                   [](const Particle& p) { return p.position; });
+    
+    // 并行求和所有位置
+    glm::vec3 center = std::reduce(std::execution::par_unseq, 
+                                    positions.begin(), 
+                                    positions.end(),
+                                    glm::vec3(0.0f),
+                                    [](const glm::vec3& a, const glm::vec3& b) {
+                                        return a + b;
+                                    });
+    
     return center / static_cast<float>(m_particles.size());
 }

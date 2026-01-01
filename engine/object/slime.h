@@ -13,7 +13,7 @@
 /**
  * 史莱姆类 - 基于PBF（Position Based Fluids）算法的液体模拟
  * 使用物理查询API检测碰撞，保持流动性
- * ✅ 支持 CPU 多线程并行计算
+ * ✅ 使用 CPU 多线程并行计算，榨干CPU性能
  */
 class Slime : public Object {
 public:
@@ -53,15 +53,10 @@ public:
     void setRestDensity(float density) { m_restDensity = density; }
     void setParticleRadius(float radius) { m_particleRadius = radius; }
     void setCohesionStrength(float strength) { m_cohesionStrength = strength; }
-
-	float getCohesionStrength() const { return m_cohesionStrength; }
-    
-    // ✅ 并行计算控制
-    void setUseParallel(bool enable) { m_useParallel = enable; }
-    bool getUseParallel() const { return m_useParallel; }
+    float getCohesionStrength() const { return m_cohesionStrength; }
     
 private:
-    // PBF算法步骤
+    // PBF算法步骤（全部并行优化）
     void applyExternalForces(float dt);
     void predictPositions(float dt);
     void updateNeighbors();
@@ -86,8 +81,8 @@ private:
     void initRenderData();
     void updateInstanceBuffer();
     
-    // ✅ 物理碰撞检测（使用查询API）
-    void handlePhysicsCollisions();  // 使用 testOverlap 检测碰撞
+    // ✅ 物理碰撞检测（并行优化）
+    void handlePhysicsCollisions();
     
     // 粒子数据
     std::vector<Particle> m_particles;
@@ -106,9 +101,6 @@ private:
     int m_solverIterations;       // 求解器迭代次数
     float m_cohesionStrength;     // 向心力强度
     float m_viscosity;            // 粘性系数
-    
-    // ✅ 并行计算
-    bool m_useParallel;           // 是否启用并行计算
     
     // 渲染数据
     Shader* m_shader;
