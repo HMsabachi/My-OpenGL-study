@@ -13,6 +13,7 @@
 /**
  * 史莱姆类 - 基于PBF（Position Based Fluids）算法的液体模拟
  * 使用物理查询API检测碰撞，保持流动性
+ * ✅ 支持 CPU 多线程并行计算
  */
 class Slime : public Object {
 public:
@@ -55,6 +56,10 @@ public:
 
 	float getCohesionStrength() const { return m_cohesionStrength; }
     
+    // ✅ 并行计算控制
+    void setUseParallel(bool enable) { m_useParallel = enable; }
+    bool getUseParallel() const { return m_useParallel; }
+    
 private:
     // PBF算法步骤
     void applyExternalForces(float dt);
@@ -87,6 +92,7 @@ private:
     // 粒子数据
     std::vector<Particle> m_particles;
     std::vector<std::vector<int>> m_neighbors;  // 每个粒子的邻居列表
+    std::vector<int> m_particleIndices;         // ✅ 粒子索引数组（用于并行遍历）
     
     // 空间哈希表（用于加速邻居搜索）
     std::unordered_map<int, std::vector<int>> m_spatialHash;
@@ -100,6 +106,9 @@ private:
     int m_solverIterations;       // 求解器迭代次数
     float m_cohesionStrength;     // 向心力强度
     float m_viscosity;            // 粘性系数
+    
+    // ✅ 并行计算
+    bool m_useParallel;           // 是否启用并行计算
     
     // 渲染数据
     Shader* m_shader;

@@ -358,15 +358,30 @@ void Engine::keyCallback(int key, int action, int mods)
             
             myApp->lastMousePos = myApp->getMousePos();
             break;
-		case GLFW_KEY_R:
-			Slime* slime = dynamic_cast<Slime*>(self->playerController->getControlledObject());
-			float cohesion = slime->getCohesionStrength();
-            if (cohesion == 0.0f)
-                slime->setCohesionStrength(100.0f);
-            else
-				slime->setCohesionStrength(0.0f);
             
+		case GLFW_KEY_R:
+        {
+			Slime* slime = dynamic_cast<Slime*>(self->playerController->getControlledObject());
+            if (slime) {
+                float cohesion = slime->getCohesionStrength();
+                if (cohesion == 0.0f)
+                    slime->setCohesionStrength(100.0f);
+                else
+                    slime->setCohesionStrength(0.0f);
+            }
             break;
+        }
+        
+        case GLFW_KEY_P:  // ✅ 新增：P 键切换并行计算
+        {
+            Slime* slime = dynamic_cast<Slime*>(self->playerController->getControlledObject());
+            if (slime) {
+                bool useParallel = slime->getUseParallel();
+                slime->setUseParallel(!useParallel);
+                std::cout << "[Slime] 并行计算：" << (slime->getUseParallel() ? "启用" : "禁用") << std::endl;
+            }
+            break;
+        }
     }
     
 }
