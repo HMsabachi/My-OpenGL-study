@@ -251,19 +251,19 @@ void Engine::setupDemoData()
     
     // 创建史莱姆（位置、半径、粒子数）
     // 让史莱姆从空中掉落，更好地展示流体效果
-    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 1.5f, 500, slimeShader, 0);
+    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 2.0f, 1000, slimeShader, 0);
     
     // ✅ 调整史莱姆参数以获得最佳流动性
     mySlime->setRestDensity(70.0f);         // 恢复合理密度
     mySlime->setParticleRadius(0.12f);      // 粒子大小
-    mySlime->setCohesionStrength(100.0f);     // ✅ 降低向心力，让史莱姆更流动
+    mySlime->setCohesionStrength(50.0f);     // ✅ 降低向心力，让史莱姆更流动
 
 	mySlime->setName("PlayerSlime"); // 设置名称
     
     // ✅ 绑定到玩家控制器，调整控制参数
     playerController->setControlledObject(mySlime);
     playerController->setMoveSpeed(15.0f);   // 移动速度
-    playerController->setMoveForce(1000.0f);   // ✅ 降低施加的力，让控制更精细
+    playerController->setMoveForce(6000.0f);   // ✅ 降低施加的力，让控制更精细
     
     // 添加到场景
     scene->addObject(mySlime);
@@ -361,10 +361,10 @@ void Engine::keyCallback(int key, int action, int mods)
 		case GLFW_KEY_R:
 			Slime* slime = dynamic_cast<Slime*>(self->playerController->getControlledObject());
 			float cohesion = slime->getCohesionStrength();
-            if (cohesion == -1.0f)
+            if (cohesion == 0.0f)
                 slime->setCohesionStrength(100.0f);
             else
-				slime->setCohesionStrength(-1.0f);
+				slime->setCohesionStrength(0.0f);
             
             break;
     }
