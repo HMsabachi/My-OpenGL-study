@@ -2,6 +2,10 @@
 #include "marchingCubes.h"
 #include "densityField.h"
 #include <unordered_map>
+#include <execution>
+#include <numeric>
+#include <mutex>
+#include <iostream>
 
 // Marching Cubes 边表：每一位表示一条边是否与等值面相交
 const int MarchingCubes::edgeTable[256] = {
@@ -304,13 +308,62 @@ MeshData MarchingCubes::generateMesh(const DensityField& densityField, float iso
     MeshData mesh;
     int resolution = densityField.getResolution();
     
-    // 遍历所有立方体网格
-    for (int z = 0; z < resolution - 1; ++z) {
-        for (int y = 0; y < resolution - 1; ++y) {
-            for (int x = 0; x < resolution - 1; ++x) {
-                processCube(densityField, x, y, z, isoLevel, mesh);
-            }
+    if (resolution <= 1) return mesh;
+    
+    // ✅ 准备并行处理所有立方体
+    int numCubes = (resolution - 1) * (resolution - 1) * (resolution - 1);
+    std::vector<int> cubeIndices(numCubes);
+    std::iota(cubeIndices.begin(), cubeIndices.end(), 0);
+    
+    // ✅ 为每个立方体生成局部网格数据
+    std::vector<MeshData> localMeshes(numCubes);
+    
+    std::for_each(std::execution::par_unseq, cubeIndices.begin(), cubeIndices.end(),
+        [this, &densityField, isoLevel, resolution, &localMeshes](int cubeIdx) {
+            // 将线性索引转换为3D坐标
+            int gridSize = resolution - 1;
+            int z = cubeIdx / (gridSize * gridSize);
+            int y = (cubeIdx / gridSize) % gridSize;
+            int x = cubeIdx % gridSize;
+            
+            // 处理该立方体
+            processCube(densityField, x, y, z, isoLevel, localMeshes[cubeIdx]);
+        });
+    
+    // ✅ 合并所有局部网格
+    // 先计算总大小
+    size_t totalVertices = 0;
+    size_t totalIndices = 0;
+    
+    for (const auto& localMesh : localMeshes) {
+        totalVertices += localMesh.positions.size();
+        totalIndices += localMesh.indices.size();
+    }
+    
+    // 预分配空间
+    mesh.positions.reserve(totalVertices);
+    mesh.normals.reserve(totalVertices);
+    mesh.indices.reserve(totalIndices);
+    
+    // 合并数据
+    unsigned int vertexOffset = 0;
+    for (const auto& localMesh : localMeshes) {
+        if (localMesh.positions.empty()) continue;
+        
+        // 复制顶点数据
+        mesh.positions.insert(mesh.positions.end(), 
+                             localMesh.positions.begin(), 
+                             localMesh.positions.end());
+        mesh.normals.insert(mesh.normals.end(), 
+                           localMesh.normals.begin(), 
+                           localMesh.normals.end());
+        
+        // 复制索引数据（需要加上偏移）
+        for (unsigned int idx : localMesh.indices) {
+            mesh.indices.push_back(idx + vertexOffset);
         }
+        
+        vertexOffset += localMesh.positions.size();
     }
     
     return mesh;
