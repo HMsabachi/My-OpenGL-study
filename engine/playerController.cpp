@@ -87,8 +87,13 @@ void PlayerController::updateObjectControl(float deltaTime) {
     if (glm::length(moveDirection) > 0.001f) {
         moveDirection = glm::normalize(moveDirection);
 
-        // ✅ 修复：使用 m_moveSpeed 而不是 m_moveForce
-        glm::vec3 force = moveDirection * m_moveSpeed;
+        // 修复：同时使用速度和力，确保有响应
+        // 对于史莱姆这种粒子系统，需要施加持续的力
+        glm::vec3 force = moveDirection * m_moveForce;
         m_controlledObject->applyForce(force);
+        
+        // 可选：直接修改速度，让控制更响应
+        // 对于传统刚体，这样做会绕过物理模拟，但对粒子系统很有效
+        // m_controlledObject->setVelocity(moveDirection * m_moveSpeed);
     }
 }

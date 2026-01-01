@@ -12,6 +12,7 @@
 
 /**
  * 史莱姆类 - 基于PBF（Position Based Fluids）算法的液体模拟
+ * 使用物理查询API检测碰撞，保持流动性
  */
 class Slime : public Object {
 public:
@@ -80,6 +81,9 @@ private:
     void initRenderData();
     void updateInstanceBuffer();
     
+    // ✅ 物理碰撞检测（使用查询API）
+    void handlePhysicsCollisions();  // 使用 testOverlap 检测碰撞
+    
     // 粒子数据
     std::vector<Particle> m_particles;
     std::vector<std::vector<int>> m_neighbors;  // 每个粒子的邻居列表
@@ -105,10 +109,6 @@ private:
     std::shared_ptr<Buffer<unsigned int>> m_sphereEBO;
     std::shared_ptr<Buffer<float>> m_instanceVBO;  // 实例化缓冲（float数组）
     int m_sphereIndexCount;
-    
-    // 碰撞检测
-    void handleCollisions();
-    void handleObjectCollisions();  // 与ReactPhysics3D对象碰撞
 };
 
 #endif // SLIME_H

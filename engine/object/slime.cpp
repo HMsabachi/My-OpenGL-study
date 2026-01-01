@@ -17,9 +17,9 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
     : Object(engine, position),
       m_slimeRadius(radius),
       m_particleRadius(0.12f),
-      m_restDensity(6000.0f),         // 提高静止密度以获得更好的约束
-      m_epsilon(600.0f),              // 提高松弛参数
-      m_solverIterations(3),          // 增加迭代次数
+      m_restDensity(6000.0f),
+      m_epsilon(600.0f),
+      m_solverIterations(3),
       m_cohesionStrength(3.0f),
       m_viscosity(0.05f),
       m_shader(shader),
@@ -42,7 +42,7 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
             offset = glm::vec3(dist(gen), dist(gen), dist(gen));
         } while (glm::length(offset) > 1.0f);
         
-        offset *= radius * 0.9f;  // 更松散的初始分布
+        offset *= radius * 0.9f;
         
         particle.position = position + offset;
         particle.predictedPos = particle.position;
@@ -115,15 +115,85 @@ void Slime::update(float deltaTime) {
     applyCohesionForce();
     applyViscosity();
     
-    // 处理碰撞
-    handleCollisions();
-    handleObjectCollisions();
+    // ✅ 使用物理查询进行碰撞检测
+    handlePhysicsCollisions();
     
     // 更新渲染数据
     updateInstanceBuffer();
     
     // 更新质心位置
     m_position = getCenterOfMass();
+}
+
+// ✅ 新实现：使用 Raycast 进行高效碰撞检测
+void Slime::handlePhysicsCollisions() {
+    if (!m_engine) return;
+    
+    auto* world = m_engine->getPhysicsWorld();
+    if (!world) return;
+    
+    const float checkDistance = m_particleRadius * 2.0f;  // 检测距离
+    const float restitution = 0.3f;  // 弹性系数
+    const float friction = 0.4f;     // 摩擦系数
+    
+    // ✅ 优化：只检测移动中的粒子
+    for (auto& particle : m_particles) {
+        float speed = glm::length(particle.velocity);
+        if (speed < 0.01f) continue;  // 静止粒子跳过
+        
+        // ✅ 关键改进：向速度方向发射射线，提前预测碰撞
+        glm::vec3 rayDir = glm::normalize(particle.velocity);
+        float rayLength = speed * 0.016f + checkDistance;  // 预测下一帧位置
+        
+        rp3d::Vector3 start(particle.position.x, particle.position.y, particle.position.z);
+        rp3d::Vector3 end = start + rp3d::Vector3(rayDir.x, rayDir.y, rayDir.z) * rayLength;
+        rp3d::Ray ray(start, end);
+        
+        // Raycast 回调
+        class SlimeRaycastCallback : public rp3d::RaycastCallback {
+        public:
+            bool hasHit = false;
+            glm::vec3 hitNormal;
+            glm::vec3 hitPoint;
+            float hitFraction = 1.0f;
+            
+            virtual rp3d::decimal notifyRaycastHit(const rp3d::RaycastInfo& info) override {
+                if (info.hitFraction < hitFraction) {
+                    hasHit = true;
+                    hitNormal = glm::vec3(info.worldNormal.x, info.worldNormal.y, info.worldNormal.z);
+                    hitPoint = glm::vec3(info.worldPoint.x, info.worldPoint.y, info.worldPoint.z);
+                    hitFraction = info.hitFraction;
+                }
+                return info.hitFraction;  // 继续检测更近的碰撞
+            }
+        };
+        
+        SlimeRaycastCallback callback;
+        world->raycast(ray, &callback);
+        
+        if (callback.hasHit) {
+            // ✅ 计算穿透距离
+            float penetration = m_particleRadius - glm::length(callback.hitPoint - particle.position);
+            
+            if (penetration > 0) {
+                // ✅ 位置修正：推出碰撞体
+                particle.position += callback.hitNormal * penetration;
+                particle.predictedPos = particle.position;
+                
+                // ✅ 速度修正：反弹 + 摩擦
+                float vn = glm::dot(particle.velocity, callback.hitNormal);
+                if (vn < 0) {
+                    // 法向速度：反弹
+                    glm::vec3 normalVel = vn * callback.hitNormal;
+                    particle.velocity -= (1.0f + restitution) * normalVel;
+                    
+                    // 切向速度：摩擦
+                    glm::vec3 tangentVel = particle.velocity - glm::dot(particle.velocity, callback.hitNormal) * callback.hitNormal;
+                    particle.velocity -= tangentVel * friction;
+                }
+            }
+        }
+    }
 }
 
 void Slime::applyExternalForces(float dt) {
@@ -382,101 +452,6 @@ void Slime::applyViscosity() {
     }
 }
 
-void Slime::handleCollisions() {
-    // 简单地面碰撞
-    const float groundY = -5.0f;
-    const float damping = 0.3f;  // 增加阻尼，让碰撞更明显
-    
-    for (auto& particle : m_particles) {
-        if (particle.position.y - m_particleRadius < groundY) {
-            particle.position.y = groundY + m_particleRadius;
-            particle.velocity.y *= -damping;
-            
-            // 添加摩擦力
-            particle.velocity.x *= 0.95f;
-            particle.velocity.z *= 0.95f;
-        }
-    }
-}
-
-void Slime::handleObjectCollisions() {
-    // 改进的碰撞检测 - 使用球形碰撞体而不是raycast
-    if (!m_engine) return;
-    
-    auto* world = m_engine->getPhysicsWorld();
-    if (!world) return;
-    
-    const float collisionMargin = m_particleRadius * 1.5f;
-    
-    for (auto& particle : m_particles) {
-        // 对每个粒子做多方向的射线检测
-        const std::vector<glm::vec3> directions = {
-            glm::vec3(0, -1, 0),   // 下
-            glm::vec3(0, 1, 0),    // 上
-            glm::vec3(1, 0, 0),    // 右
-            glm::vec3(-1, 0, 0),   // 左
-            glm::vec3(0, 0, 1),    // 前
-            glm::vec3(0, 0, -1)    // 后
-        };
-        
-        for (const auto& dir : directions) {
-            rp3d::Vector3 start(
-                particle.position.x, 
-                particle.position.y, 
-                particle.position.z
-            );
-            rp3d::Vector3 rayDir(dir.x, dir.y, dir.z);
-            rp3d::Vector3 end = start + rayDir * collisionMargin;
-            
-            rp3d::Ray ray(start, end);
-            
-            // 创建Raycast回调
-            class SimpleRaycastCallback : public rp3d::RaycastCallback {
-            public:
-                bool hasHit = false;
-                glm::vec3 hitNormal;
-                float hitFraction = 1.0f;
-                
-                virtual rp3d::decimal notifyRaycastHit(const rp3d::RaycastInfo& info) override {
-                    if (info.hitFraction < hitFraction) {
-                        hasHit = true;
-                        hitNormal = glm::vec3(
-                            info.worldNormal.x,
-                            info.worldNormal.y,
-                            info.worldNormal.z
-                        );
-                        hitFraction = info.hitFraction;
-                    }
-                    return info.hitFraction;
-                }
-            };
-            
-            SimpleRaycastCallback callback;
-            world->raycast(ray, &callback);
-            
-            if (callback.hasHit && callback.hitFraction < 1.0f) {
-                // 计算穿透深度
-                float penetration = collisionMargin * (1.0f - callback.hitFraction);
-                
-                // 推出碰撞体
-                particle.position += callback.hitNormal * penetration;
-                particle.predictedPos = particle.position;
-                
-                // 反弹速度
-                float restitution = 0.3f;
-                float vn = glm::dot(particle.velocity, callback.hitNormal);
-                if (vn < 0) {
-                    particle.velocity -= (1.0f + restitution) * vn * callback.hitNormal;
-                    
-                    // 摩擦力
-                    glm::vec3 tangent = particle.velocity - vn * callback.hitNormal;
-                    particle.velocity -= tangent * 0.3f;
-                }
-            }
-        }
-    }
-}
-
 void Slime::updateInstanceBuffer() {
     // 更新所有粒子的变换矩阵
     std::vector<float> instanceData(m_particles.size() * 16);  // mat4 = 16个float
@@ -521,7 +496,7 @@ bool Slime::collideWith(const Object& other) const {
 }
 
 void Slime::applyForce(const glm::vec3& force) {
-    // 将力施加到所有粒子上
+    // ✅ 直接施加到粒子上，保持流动性
     for (auto& particle : m_particles) {
         particle.force += force / static_cast<float>(m_particles.size());
     }
