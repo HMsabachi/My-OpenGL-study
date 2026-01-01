@@ -258,11 +258,11 @@ void Engine::setupDemoData()
     // 创建史莱姆
     auto* slimeParticleShader = shaderManager->getShader("slime");
     auto* slimeMeshShaderPtr = shaderManager->getShader("slime_mesh");
-    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 1.5f, 800, 
+    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 2.0f, 600, 
                                slimeParticleShader, slimeMeshShaderPtr, 0);
     
     // 史莱姆参数
-    mySlime->setRestDensity(70.0f);         // 密度
+    mySlime->setRestDensity(50.0f);         // 密度
     mySlime->setParticleRadius(0.12f);      // 粒子大小
     mySlime->setCohesionStrength(50.0f);     // 向心力
 

@@ -21,28 +21,28 @@ const float PI = 3.14159265359f;
 Slime::Slime(Engine* engine, const glm::vec3& position, float radius, 
              int particleCount, Shader* particleShader, Shader* meshShader, GLuint texture)
     : Object(engine, position),
-      m_slimeRadius(radius),
-      m_particleRadius(0.12f),
-      m_restDensity(6000.0f),
-      m_epsilon(600.0f),
-      m_solverIterations(3),
-      m_cohesionStrength(3.0f),
-      m_viscosity(0.05f),
-      m_particleShader(particleShader),
-      m_meshShader(meshShader),
-      m_texture(texture),
-      m_sphereIndexCount(0),
-      m_renderMode(RenderMode::PARTICLES),
-      m_meshResolution(32),
-      m_isoLevel(0.5f),
-      m_blurIterations(2),
-      m_meshUpdateTimer(0.0f),
-      m_meshUpdateInterval(0.005f),  // 每秒更新20次网格
-      m_minComponentSize(5),         // ✅ 最小连通块大小
-      m_particleVAO(nullptr),
-      m_meshVAO(nullptr),
-      m_marchingCubes(nullptr),
-      m_connectedComponents(nullptr)  // ✅ 连通域分析器
+      m_slimeRadius(radius),                      // 史莱姆整体半径
+      m_particleRadius(0.12f),                   // 单个粒子半径
+      m_restDensity(6000.0f),                    // PBF算法的静止密度（用于约束求解）
+      m_epsilon(600.0f),                         // 数值稳定性参数（避免除零）
+      m_solverIterations(2),                     // 每帧约束求解迭代次数
+      m_cohesionStrength(3.0f),                  // 向心力强度（保持史莱姆聚合）
+      m_viscosity(0.05f),                        // 粘性系数（模拟流体内部阻力）
+      m_particleShader(particleShader),          // 粒子渲染着色器
+      m_meshShader(meshShader),                  // 网格渲染着色器
+      m_texture(texture),                        // 纹理ID
+      m_sphereIndexCount(0),                     // 球体网格索引数量（用于实例化渲染）
+      m_renderMode(RenderMode::PARTICLES),       // 默认渲染模式：粒子球体
+      m_meshResolution(28),                      // 密度场网格分辨率（用于Marching Cubes）
+      m_isoLevel(0.5f),                         // 等值面阈值（密度大于此值为实心）
+      m_blurIterations(6),                       // 密度场模糊迭代次数（使表面更光滑）
+      m_meshUpdateTimer(0.0f),                   // 网格更新计时器
+      m_meshUpdateInterval(0.01f),              // 网格更新间隔（0.005秒 = 每秒更新200次）
+      m_minComponentSize(2),                     // 最小连通块大小（少于5个粒子的块将被忽略）
+      m_particleVAO(nullptr),                    // 粒子VAO（Vertex Array Object）
+      m_meshVAO(nullptr),                        // 网格VAO（保留用于向后兼容）
+      m_marchingCubes(nullptr),                  // Marching Cubes算法实例（用于生成网格）
+      m_connectedComponents(nullptr)             // 连通域分析器（用于识别独立的史莱姆块）
 {
     // 初始化粒子
     m_particles.resize(particleCount);
@@ -194,7 +194,7 @@ void Slime::applyExternalForces(float dt) {
 
 //  并行优化：预测位置（删除串行代码）
 void Slime::predictPositions(float dt) {
-    //  使用 par_unseq 进一步优化，允许向量化
+    
     std::for_each(std::execution::par_unseq, m_particles.begin(), m_particles.end(),
         [dt](Particle& particle) {
             particle.velocity += particle.force * dt;
@@ -282,16 +282,16 @@ void Slime::updateVelocities(float dt) {
         });
 }
 
-//  并行优化：向心力（删除串行代码，优化缓存局部性）
+//  并行优化：向心力
 void Slime::applyCohesionForce() {
     const glm::vec3 centerOfMass = getCenterOfMass();
-    const glm::vec3 targetCenter = centerOfMass + glm::vec3(0.0f, m_slimeRadius * 0.3f, 0.0f);
+    const glm::vec3 targetCenter = centerOfMass + glm::vec3(0.0f, m_slimeRadius * 0.2f, 0.0f);
     
     // 预计算常量
     const float radiusThreshold = m_slimeRadius * 0.5f;
     const float invRadius = 1.0f / m_slimeRadius;
-    const float idealDist = m_particleRadius * 2.2f;
-    const float maxAttractionDist = m_particleRadius * 3.5f;
+    const float idealDist = m_particleRadius * 4.2f;
+    const float maxAttractionDist = m_particleRadius * 5.5f;
     const float attractionRange = maxAttractionDist - idealDist;
     const float maxForce = m_cohesionStrength * 3.0f;
     
@@ -616,7 +616,7 @@ void Slime::toggleRenderMode() {
     }
 }
 
-// 支持多块网格生成
+// 多块网格生成
 void Slime::generateMeshes() {
     // 性能计时
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -730,7 +730,7 @@ void Slime::generateMeshes() {
     
     // 性能统计（每10帧输出一次）
     static int frameCounter = 0;
-    if (++frameCounter >= 10) {
+    if (++frameCounter >= 120) {
         frameCounter = 0;
         
         auto connTime = std::chrono::duration_cast<std::chrono::microseconds>(connEnd - connStart).count();
@@ -745,13 +745,13 @@ void Slime::generateMeshes() {
             totalTriangles += compMesh.meshData.triangleCount();
         }
         
-        /*std::cout << "[Slime] 网格生成性能 - 总时间: " << (totalTime / 1000.0f) << "ms"
+        std::cout << "[Slime] 网格生成性能 - 总时间: " << (totalTime / 1000.0f) << "ms"
                   << " | 连通域: " << (connTime / 1000.0f) << "ms"
                   << " | 网格: " << (meshTime / 1000.0f) << "ms"
                   << " | 缓冲: " << (bufferTime / 1000.0f) << "ms"
                   << " | 块数: " << m_componentMeshes.size()
                   << " | 顶点: " << totalVertices
-                  << " | 三角形: " << totalTriangles << std::endl;*/
+                  << " | 三角形: " << totalTriangles << std::endl;
     }
 }
 
