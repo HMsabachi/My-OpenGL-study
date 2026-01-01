@@ -37,9 +37,11 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
       m_blurIterations(2),
       m_meshUpdateTimer(0.0f),
       m_meshUpdateInterval(0.05f),  // 每秒更新20次网格
-      m_meshIndexCount(0),
+      m_minComponentSize(5),         // ✅ 最小连通块大小
       m_particleVAO(nullptr),
-      m_meshVAO(nullptr)
+      m_meshVAO(nullptr),
+      m_marchingCubes(nullptr),
+      m_connectedComponents(nullptr)  // ✅ 连通域分析器
 {
     // 初始化粒子
     m_particles.resize(particleCount);
@@ -77,23 +79,27 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
     // 初始化渲染数据
     initRenderData();
     
-    // ✅ 初始化密度场和 Marching Cubes
-    glm::vec3 boundsMin = position - glm::vec3(radius * 1.5f);
-    glm::vec3 boundsMax = position + glm::vec3(radius * 1.5f);
-    m_densityField = new DensityField(boundsMin, boundsMax, m_meshResolution);
+    // ✅ 初始化 Marching Cubes 和连通域分析器
     m_marchingCubes = new MarchingCubes();
+    m_connectedComponents = new ConnectedComponents();
     
     //  更新日志输出
     std::cout << "[Slime] 史莱姆创建成功：" << particleCount << " 个粒子 | 并行计算：启用" 
               << " | CPU 核心数：" << std::thread::hardware_concurrency() 
-              << " | 网格分辨率：" << m_meshResolution << std::endl;
+              << " | 网格分辨率：" << m_meshResolution 
+              << " | 连通域分析：启用" << std::endl;
 }
 
 Slime::~Slime() {
     delete m_particleVAO;
     delete m_meshVAO;
-    delete m_densityField;
     delete m_marchingCubes;
+    delete m_connectedComponents;
+    
+    // ✅ 清理多块网格
+    for (auto& compMesh : m_componentMeshes) {
+        delete compMesh.vao;
+    }
 }
 
 void Slime::initRenderData() {
@@ -120,29 +126,15 @@ void Slime::initRenderData() {
     m_particleVAO->addInstancedVBO(*m_instanceVBO, "4f 4f 4f 4f", 3, 1);  // 从location 3开始
     m_particleVAO->addEBO(*m_sphereEBO);
     
-    // ===== 网格渲染数据 =====
-    // ✅ 预分配合理大小的缓冲区，避免后续重新分配失败
-    // 估算初始容量：假设最多生成 10000 个顶点和 30000 个索引
-    const size_t initialVertexCapacity = 10000;
-    const size_t initialIndexCapacity = 30000;
-    
-    std::vector<float> emptyMeshData(initialVertexCapacity * 6, 0.0f);  // 6 floats per vertex (pos + normal)
-    std::vector<unsigned int> emptyIndices(initialIndexCapacity, 0);
-    
-    m_meshVBO = std::make_shared<Buffer<float>>(emptyMeshData, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
-    m_meshEBO = std::make_shared<Buffer<unsigned int>>(emptyIndices, GL_ELEMENT_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
-    
-    // ✅ 配置网格VAO（完全使用封装的方法）
-    m_meshVAO = new VAO();
-    m_meshVAO->addVBO(*m_meshVBO, "3f 3f", GL_FALSE, 0);  // location 0: pos(3f), location 1: normal(3f)
-    m_meshVAO->addEBO(*m_meshEBO);
-    
-    // 初始化网格索引计数为0
+    // ✅ 网格渲染数据（不再需要预分配大缓冲区，每个块独立创建）
+    // 保留这些成员变量用于向后兼容，但不使用
+    m_meshVAO = nullptr;
+    m_meshVBO = nullptr;
+    m_meshEBO = nullptr;
     m_meshIndexCount = 0;
     
-    std::cout << "[Slime] 渲染数据初始化完成 | 网格缓冲预分配：" 
-              << initialVertexCapacity << " 顶点, " 
-              << initialIndexCapacity << " 索引" << std::endl;
+    std::cout << "[Slime] 渲染数据初始化完成 | 粒子：" << m_particles.size() 
+              << " | 网格：动态多块生成" << std::endl;
 }
 
 void Slime::update(float deltaTime) {
@@ -177,21 +169,16 @@ void Slime::update(float deltaTime) {
         // 网格模式：定期更新网格
         m_meshUpdateTimer += deltaTime;
         if (m_meshUpdateTimer >= m_meshUpdateInterval) {
-            generateMesh();
+            generateMeshes();  // ✅ 改为多块网格生成
             updateMeshBuffers();
             m_meshUpdateTimer = 0.0f;
         }
     }
     
-    //  更新质心位置（用于相机跟踪，但不作为向心力中心）
+    //  更新质心位置（用于相机跟踪）
     m_position = getCenterOfMass();
-    
-    // 动态更新密度场边界（跟随史莱姆移动）
-    glm::vec3 boundsMin = m_position - glm::vec3(m_slimeRadius * 1.5f);
-    glm::vec3 boundsMax = m_position + glm::vec3(m_slimeRadius * 1.5f);
-    delete m_densityField;
-    m_densityField = new DensityField(boundsMin, boundsMax, m_meshResolution);
 }
+
 
 //  并行优化：施加外力（删除串行代码）
 void Slime::applyExternalForces(float dt) {
@@ -587,10 +574,10 @@ void Slime::render() const {
         
         m_particleShader->end();
     } else {
-        // 网格模式
-        if (!m_meshShader || m_meshIndexCount == 0) return;
+        // ✅ 网格模式：渲染所有独立块
+        if (!m_meshShader || m_componentMeshes.empty()) return;
         
-        // ✅ 确保深度测试启用
+        // 确保深度测试启用
         glEnable(GL_DEPTH_TEST);
         
         // 启用混合以支持半透明
@@ -605,8 +592,12 @@ void Slime::render() const {
         // 设置史莱姆颜色
         m_meshShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
         
-        // ✅ 使用 VAO 封装的 draw 方法绘制（自动处理绑定/解绑）
-        m_meshVAO->draw(GL_TRIANGLES, m_meshIndexCount);
+        // ✅ 渲染每个独立的网格块
+        for (const auto& compMesh : m_componentMeshes) {
+            if (compMesh.indexCount > 0 && compMesh.vao) {
+                compMesh.vao->draw(GL_TRIANGLES, compMesh.indexCount);
+            }
+        }
         
         m_meshShader->end();
         
@@ -624,7 +615,8 @@ void Slime::toggleRenderMode() {
     }
 }
 
-void Slime::generateMesh() {
+// 支持多块网格生成
+void Slime::generateMeshes() {
     // 1. 提取粒子位置
     std::vector<glm::vec3> positions(m_particles.size());
     std::transform(std::execution::par_unseq,
@@ -632,47 +624,104 @@ void Slime::generateMesh() {
                    positions.begin(),
                    [](const Particle& p) { return p.position; });
     
-    // 2. 构建密度场
-    m_densityField->buildFromParticles(positions, m_particleRadius);
+    // 2. 使用连通域分析将粒子分组
+    float searchRadius = m_particleRadius * 4.0f;  // 与邻居搜索半径一致
+    std::vector<ComponentInfo> components = 
+        m_connectedComponents->analyzeComponents(positions, searchRadius, m_minComponentSize);
     
-    // 3. 应用模糊
-    m_densityField->applyBlur(m_blurIterations);
+    //std::cout << "[Slime] 连通域分析完成，找到 " << components.size() << " 个候选块" << std::endl;
     
-    // 4. 使用 Marching Cubes 生成网格
-    m_currentMesh = m_marchingCubes->generateMesh(*m_densityField, m_isoLevel);
+    // 3. 清理旧的网格
+    for (auto& compMesh : m_componentMeshes) {
+        delete compMesh.vao;
+    }
+    m_componentMeshes.clear();
+    
+    // 4. 为每个连通块生成独立的网格
+    for (size_t compIdx = 0; compIdx < components.size(); ++compIdx) {
+        const auto& component = components[compIdx];
+        
+        //std::cout << "[Slime] 处理块 " << (compIdx + 1) << "/" << components.size() 
+                  //<< "，粒子数：" << component.particleCount() << std::endl;
+        
+        // 为该块创建密度场
+        DensityField densityField(component.boundsMin, component.boundsMax, m_meshResolution);
+        
+        // 构建密度场（只使用该块的粒子）
+        densityField.buildFromParticles(component.particlePositions, m_particleRadius);
+        
+        // 应用模糊
+        densityField.applyBlur(m_blurIterations);
+        
+        // 使用 Marching Cubes 生成网格
+        MeshData meshData = m_marchingCubes->generateMesh(densityField, m_isoLevel);
+        
+        // 如果网格为空，跳过
+        if (meshData.vertexCount() == 0) {
+            std::cout << "[Slime] 块 " << (compIdx + 1) << " 生成网格为空，跳过" << std::endl;
+            continue;
+        }
+        
+        //std::cout << "[Slime] 块 " << (compIdx + 1) << " 生成网格：" 
+                  //<< meshData.vertexCount() << " 顶点，" 
+                  //<< meshData.triangleCount() << " 三角形" << std::endl;
+        
+        // 创建组件网格
+        ComponentMesh compMesh;
+        compMesh.meshData = std::move(meshData);
+        compMesh.indexCount = compMesh.meshData.indices.size();
+        
+        // 准备顶点数据（位置 + 法线）
+        const size_t vertexCapacity = compMesh.meshData.vertexCount() * 6;  // pos + normal
+        std::vector<float> vertexData(vertexCapacity);
+        
+        for (size_t i = 0; i < compMesh.meshData.vertexCount(); ++i) {
+            const auto& pos = compMesh.meshData.positions[i];
+            const auto& normal = compMesh.meshData.normals[i];
+            
+            size_t offset = i * 6;
+            vertexData[offset + 0] = pos.x;
+            vertexData[offset + 1] = pos.y;
+            vertexData[offset + 2] = pos.z;
+            vertexData[offset + 3] = normal.x;
+            vertexData[offset + 4] = normal.y;
+            vertexData[offset + 5] = normal.z;
+        }
+        
+        // 使用封装的 Buffer 创建 VBO 和 EBO
+        compMesh.vbo = std::make_shared<Buffer<float>>(vertexData, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
+        compMesh.ebo = std::make_shared<Buffer<unsigned int>>(
+            compMesh.meshData.indices, GL_ELEMENT_ARRAY_BUFFER, GL_DYNAMIC_DRAW
+        );
+        
+        // 配置 VAO
+        compMesh.vao = new VAO();
+        compMesh.vao->addVBO(*compMesh.vbo, "3f 3f", GL_FALSE, 0);  // pos + normal
+        compMesh.vao->addEBO(*compMesh.ebo);
+        
+        m_componentMeshes.push_back(std::move(compMesh));
+    }
+    
+    //std::cout << "[Slime] 成功生成了 " << m_componentMeshes.size() << " 个独立网格块" << std::endl;
 }
 
+// ✅ 修改：updateMeshBuffers 不再需要（缓冲区在 generateMeshes 中创建）
 void Slime::updateMeshBuffers() {
-    if (m_currentMesh.vertexCount() == 0) {
-        m_meshIndexCount = 0;
-        return;
+    // 缓冲区已在 generateMeshes() 中创建和更新
+    // 这个函数保持为空或输出调试信息
+    if (m_componentMeshes.empty()) {
+        std::cout << "[Slime] 警告：没有生成任何网格块" << std::endl;
+    } else {
+        size_t totalVertices = 0;
+        size_t totalTriangles = 0;
+        for (const auto& compMesh : m_componentMeshes) {
+            totalVertices += compMesh.meshData.vertexCount();
+            totalTriangles += compMesh.meshData.triangleCount();
+        }
+        //std::cout << "[Slime] 网格更新：" << m_componentMeshes.size() << " 块, "
+                  //<< totalVertices << " 总顶点, " 
+                  //<< totalTriangles << " 总三角形" << std::endl;
     }
-    
-    // 组合位置和法线数据（交错存储)
-    std::vector<float> vertexData;
-    vertexData.reserve(m_currentMesh.vertexCount() * 6);  // 每个顶点6个float (pos + normal)
-    
-    for (size_t i = 0; i < m_currentMesh.vertexCount(); ++i) {
-        const auto& pos = m_currentMesh.positions[i];
-        const auto& normal = m_currentMesh.normals[i];
-        
-        vertexData.push_back(pos.x);
-        vertexData.push_back(pos.y);
-        vertexData.push_back(pos.z);
-        vertexData.push_back(normal.x);
-        vertexData.push_back(normal.y);
-        vertexData.push_back(normal.z);
-    }
-    
-    // ✅ 使用封装的 resize 方法更新缓冲区（支持动态大小调整）
-    m_meshVBO->resize(vertexData);
-    m_meshEBO->resize(m_currentMesh.indices);
-    
-    m_meshIndexCount = m_currentMesh.indices.size();
-    
-    std::cout << "[Slime] 网格更新：" << m_currentMesh.vertexCount() << " 顶点, " 
-              << m_currentMesh.triangleCount() << " 三角形, "
-              << m_meshIndexCount << " 索引" << std::endl;
 }
 
 bool Slime::collideWith(const Object& other) const {
