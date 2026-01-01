@@ -95,3 +95,12 @@ size_t Scene::getActiveObjectCount() const {
     }
     return count;
 }
+
+Object* Scene::findObjectByName(const std::string& name) const {
+    for (const auto& obj : m_objects) {
+        if (obj && obj->getName() == name) {
+            return obj.get();
+        }
+    }
+    return nullptr;  // 未找到
+}

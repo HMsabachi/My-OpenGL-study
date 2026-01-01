@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>  // 用于向量和矩阵操作，假设使用GLM库
 #include <glm/gtc/quaternion.hpp>  // 四元数用于旋转
 #include <reactphysics3d/reactphysics3d.h>  // ReactPhysics3D物理引擎
+#include <string>  // 添加string头文件
 
 /**
  * 游戏物体基类，提供基本的位置、速度、更新和渲染功能。
@@ -104,6 +105,20 @@ public:
     // 检查是否活跃
     bool isActive() const { return m_isActive; }
 
+    // ===== 名称相关 =====
+    
+    /**
+     * 获取对象名称
+     * @return 对象名称
+     */
+    const std::string& getName() const { return m_name; }
+    
+    /**
+     * 设置对象名称
+     * @param name 新的名称
+     */
+    void setName(const std::string& name) { m_name = name; }
+
     // ===== 物理引擎相关 =====
     
     /**
@@ -148,6 +163,7 @@ protected:
     glm::vec3 m_scale;         // 缩放
     glm::vec3 m_velocity;      // 速度
     bool m_isActive;           // 活跃标志
+    std::string m_name;        // 对象名称
 
     // ReactPhysics3D相关
     PhysicsType m_physicsType;              // 物理体类型
@@ -155,6 +171,9 @@ protected:
     rp3d::RigidBody* m_rigidBody;          // 物理引擎刚体
     rp3d::Collider* m_collider;            // 碰撞体
     rp3d::CollisionShape* m_collisionShapeObj;  // 碰撞形状对象
+
+private:
+    static int s_objectCounter;  // 对象计数器，用于生成唯一名称
 };
 
 #endif // OBJECT_H

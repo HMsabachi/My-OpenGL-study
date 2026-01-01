@@ -1,7 +1,10 @@
 ﻿// Object.cpp
 #include "Object.h"
 #include "../engine.h"
-#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/type_ptr.hpp>"
+
+// 初始化静态对象计数器
+int Object::s_objectCounter = 0;
 
 /**
  * 构造函数实现。
@@ -13,6 +16,7 @@ Object::Object(Engine* engine, const glm::vec3& position, const glm::vec3& veloc
       m_scale(glm::vec3(1.0f)), 
       m_velocity(velocity), 
       m_isActive(true),
+      m_name("Object_" + std::to_string(s_objectCounter++)),  // 自动生成唯一名称
       m_physicsType(PhysicsType::NONE),
       m_collisionShape(CollisionShape::NONE),
       m_rigidBody(nullptr),

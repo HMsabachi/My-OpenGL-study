@@ -71,6 +71,13 @@ public:
     size_t getActiveObjectCount() const;
 
     /**
+     * @brief 通过名称查找对象
+     * @param name 对象名称
+     * @return 找到的对象指针，如果未找到则返回nullptr
+     */
+    Object* findObjectByName(const std::string& name) const;
+
+    /**
      * @brief 按类型查找对象
      * @tparam T 对象类型
      * @return 该类型的所有对象指针列表

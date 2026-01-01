@@ -16,12 +16,12 @@ Slime::Slime(Engine* engine, const glm::vec3& position, float radius,
              int particleCount, Shader* shader, GLuint texture)
     : Object(engine, position),
       m_slimeRadius(radius),
-      m_particleRadius(0.12f),        // 增大粒子半径
-      m_restDensity(1000.0f),         // 大幅降低静止密度（原来6378）
-      m_epsilon(100.0f),              // 降低松弛参数（原来600）
-      m_solverIterations(3),          // 减少迭代次数
-      m_cohesionStrength(3.0f),       // 大幅降低向心力（原来15.0）
-      m_viscosity(0.05f),             // 增加粘性
+      m_particleRadius(0.12f),
+      m_restDensity(6000.0f),         // 提高静止密度以获得更好的约束
+      m_epsilon(600.0f),              // 提高松弛参数
+      m_solverIterations(3),          // 增加迭代次数
+      m_cohesionStrength(3.0f),
+      m_viscosity(0.05f),
       m_shader(shader),
       m_texture(texture),
       m_sphereIndexCount(0)
@@ -100,7 +100,6 @@ void Slime::update(float deltaTime) {
     
     // PBF模拟步骤
     applyExternalForces(deltaTime);
-    applyCohesionForce();  // 在这里施加向心力（作为外力）
     predictPositions(deltaTime);
     
     // 构建空间哈希和更新邻居
@@ -113,29 +112,18 @@ void Slime::update(float deltaTime) {
     }
     
     updateVelocities(deltaTime);
+    applyCohesionForce();
     applyViscosity();
     
     // 处理碰撞
     handleCollisions();
     handleObjectCollisions();
     
-    // 安全检查：确保粒子不会离质心太远
-    glm::vec3 center = getCenterOfMass();
-    const float maxDistance = m_slimeRadius * 3.0f;
-    for (auto& particle : m_particles) {
-        float dist = glm::length(particle.position - center);
-        if (dist > maxDistance) {
-            // 强制拉回
-            particle.position = center + glm::normalize(particle.position - center) * maxDistance;
-            particle.velocity *= 0.5f;
-        }
-    }
-    
     // 更新渲染数据
     updateInstanceBuffer();
     
     // 更新质心位置
-    m_position = center;
+    m_position = getCenterOfMass();
 }
 
 void Slime::applyExternalForces(float dt) {
@@ -232,6 +220,9 @@ float Slime::computeDensity(int particleIdx) {
     float density = 0.0f;
     float h = m_particleRadius * 4.0f;
     
+    // 加入自身质量的贡献
+    density += poly6Kernel(0.0f, h);
+    
     for (int neighborIdx : m_neighbors[particleIdx]) {
         glm::vec3 diff = m_particles[particleIdx].predictedPos - m_particles[neighborIdx].predictedPos;
         float r = glm::length(diff);
@@ -246,25 +237,24 @@ float Slime::computeLambda(int particleIdx) {
     float density = computeDensity(particleIdx);
     float C = density / m_restDensity - 1.0f;
     
-    // 只在密度大于静止密度时才进行约束
-    if (C > 0.0f) {
-        glm::vec3 gradientSum(0.0f);
-        float gradientSumSq = 0.0f;
-        
-        for (int neighborIdx : m_neighbors[particleIdx]) {
-            glm::vec3 diff = m_particles[particleIdx].predictedPos - m_particles[neighborIdx].predictedPos;
-            glm::vec3 gradient = spikyGradient(diff, h) / m_restDensity;
-            gradientSum += gradient;
-            gradientSumSq += glm::dot(gradient, gradient);
-        }
-        
-        gradientSumSq += glm::dot(gradientSum, gradientSum);
-        
-        // 添加更强的松弛以避免过度约束
-        return -C / (gradientSumSq + m_epsilon);
+    // 移除条件限制，允许双向约束
+    if (std::abs(C) < 0.0001f) {
+        return 0.0f;
     }
     
-    return 0.0f;
+    glm::vec3 gradientSum(0.0f);
+    float gradientSumSq = 0.0f;
+    
+    for (int neighborIdx : m_neighbors[particleIdx]) {
+        glm::vec3 diff = m_particles[particleIdx].predictedPos - m_particles[neighborIdx].predictedPos;
+        glm::vec3 gradient = spikyGradient(diff, h) / m_restDensity;
+        gradientSum += gradient;
+        gradientSumSq += glm::dot(gradient, gradient);
+    }
+    
+    gradientSumSq += glm::dot(gradientSum, gradientSum);
+    
+    return -C / (gradientSumSq + m_epsilon);
 }
 
 glm::vec3 Slime::computeDeltaP(int particleIdx) {
@@ -301,79 +291,75 @@ void Slime::solveConstraints() {
 }
 
 void Slime::updateVelocities(float dt) {
-    const float maxVelocity = 50.0f;  // 限制最大速度
-    
     for (auto& particle : m_particles) {
         particle.velocity = (particle.predictedPos - particle.position) / dt;
-        
-        // 限制速度，防止粒子飞出
-        float speed = glm::length(particle.velocity);
-        if (speed > maxVelocity) {
-            particle.velocity = (particle.velocity / speed) * maxVelocity;
-        }
-        
         particle.position = particle.predictedPos;
     }
 }
 
 void Slime::applyCohesionForce() {
-    // 向心力：形成史莱姆的水滴形状（底部扁平宽，顶部圆润）
+    // 计算质心
     glm::vec3 centerOfMass = getCenterOfMass();
+    
+    // ✅ 关键改进：向心力指向质心偏上方，形成水滴形状
+    glm::vec3 targetCenter = centerOfMass + glm::vec3(0.0f, m_slimeRadius * 0.3f, 0.0f);
     
     for (size_t i = 0; i < m_particles.size(); ++i) {
         auto& particle = m_particles[i];
+        glm::vec3 toTarget = targetCenter - particle.position;
+        float dist = glm::length(toTarget);
         
-        // 计算粒子相对质心的位置
-        glm::vec3 relativePos = particle.position - centerOfMass;
-        float horizontalDist = std::sqrt(relativePos.x * relativePos.x + relativePos.z * relativePos.z);
-        float verticalPos = relativePos.y;
+        if (dist < 0.001f) continue; // 避免除零
         
-        // 定义史莱姆的理想形状（水滴形）
-        // 计算此高度下的理想水平半径
-        float heightRatio = (verticalPos + m_slimeRadius * 0.5f) / (m_slimeRadius * 1.5f);
-        heightRatio = glm::clamp(heightRatio, 0.0f, 1.0f);
+        // ✅ 距离越远，向心力越强（平方衰减）
+        float distanceFromCenter = glm::length(particle.position - centerOfMass);
         
-        // 水滴形状：底部宽，顶部窄
-        float idealRadius;
-        if (heightRatio < 0.5f) {
-            // 底部保持宽度
-            idealRadius = m_slimeRadius * 1.2f;
-        } else {
-            // 顶部收窄
-            float t = (heightRatio - 0.5f) / 0.5f;
-            idealRadius = m_slimeRadius * (1.2f - 0.8f * t * t);
+        // ✅ 根据粒子的垂直位置调整向心力
+        // 上方粒子受到更强的向下拉力，下方粒子受到较弱的向上拉力
+        float heightFactor = (particle.position.y - centerOfMass.y) / m_slimeRadius;
+        heightFactor = glm::clamp(heightFactor, -1.0f, 1.0f);
+        
+        // 上方粒子 (heightFactor > 0) 获得更强的向心力
+        // 下方粒子 (heightFactor < 0) 获得较弱的向心力
+        float verticalMultiplier = 1.0f + heightFactor * 1.5f; // 上方是2.5倍，下方是0
+        
+        // ✅ 基础向心力：距离越远越强
+        if (distanceFromCenter > m_slimeRadius * 0.5f) {
+            float excessDist = distanceFromCenter - m_slimeRadius * 0.5f;
+            float forceMagnitude = m_cohesionStrength * (excessDist / m_slimeRadius) * verticalMultiplier;
+            
+            // 限制最大力
+            forceMagnitude = glm::min(forceMagnitude, m_cohesionStrength * 3.0f);
+            
+            particle.force += glm::normalize(toTarget) * forceMagnitude;
         }
         
-        // 1. 水平向心力：约束水平半径
-        if (horizontalDist > idealRadius * 0.1f) {  // 避免除以0
-            float excess = horizontalDist - idealRadius;
-            if (excess > 0) {
-                glm::vec3 horizontalDir = glm::normalize(glm::vec3(relativePos.x, 0, relativePos.z));
-                float strength = m_cohesionStrength * excess;
-                particle.force -= horizontalDir * strength;
-            }
-        }
-        
-        // 2. 垂直力：维持高度
-        // 底部支撑
-        if (verticalPos < -m_slimeRadius * 0.4f) {
-            float depth = -m_slimeRadius * 0.4f - verticalPos;
-            particle.force.y += m_cohesionStrength * depth * 3.0f;
-        }
-        // 顶部压制（防止过高）
-        else if (verticalPos > m_slimeRadius * 0.6f) {
-            float excess = verticalPos - m_slimeRadius * 0.6f;
-            particle.force.y -= m_cohesionStrength * excess * 2.0f;
-        }
-        
-        // 3. 表面张力
+        // ✅ 添加表面张力 - 让相邻粒子相互吸引，形成光滑表面
         for (int neighborIdx : m_neighbors[i]) {
             glm::vec3 toNeighbor = m_particles[neighborIdx].position - particle.position;
             float neighborDist = glm::length(toNeighbor);
             
-            if (neighborDist > m_particleRadius * 2.0f && neighborDist < m_particleRadius * 3.5f) {
-                float attractionStrength = 0.5f;
+            // 在理想距离范围内施加弱吸引力
+            float idealDist = m_particleRadius * 2.2f;
+            float maxAttractionDist = m_particleRadius * 3.5f;
+            
+            if (neighborDist > idealDist && neighborDist < maxAttractionDist) {
+                float attractionStrength = 0.8f * (1.0f - (neighborDist - idealDist) / (maxAttractionDist - idealDist));
                 particle.force += glm::normalize(toNeighbor) * attractionStrength;
+            }
+        }
+        
+        // ✅ 添加轻微的"向下挤压"效果，让底部更宽
+        // 下半部分的粒子受到向外的斥力
+        if (heightFactor < -0.2f) { // 只对下半部分生效
+            glm::vec3 radialDir = particle.position - centerOfMass;
+            radialDir.y = 0; // 只考虑水平方向
+            
+            if (glm::length(radialDir) > 0.001f) {
+                radialDir = glm::normalize(radialDir);
+                // 越往下，向外推的力越强
+                float outwardForce = m_cohesionStrength * 0.5f * (-heightFactor - 0.2f);
+                particle.force += radialDir * outwardForce;
             }
         }
     }
@@ -414,49 +400,79 @@ void Slime::handleCollisions() {
 }
 
 void Slime::handleObjectCollisions() {
-    // 与ReactPhysics3D对象的简单碰撞检测
+    // 改进的碰撞检测 - 使用球形碰撞体而不是raycast
     if (!m_engine) return;
     
     auto* world = m_engine->getPhysicsWorld();
     if (!world) return;
     
-    // 创建一个Raycast回调类
-    class CollisionCallback : public rp3d::RaycastCallback {
-    public:
-        bool hasHit = false;
-        glm::vec3 hitNormal;
-        
-        virtual rp3d::decimal notifyRaycastHit(const rp3d::RaycastInfo& raycastInfo) override {
-            hasHit = true;
-            hitNormal = glm::vec3(
-                raycastInfo.worldNormal.x,
-                raycastInfo.worldNormal.y,
-                raycastInfo.worldNormal.z
-            );
-            return raycastInfo.hitFraction;  // 返回命中分数，继续搜索更近的
-        }
-    };
+    const float collisionMargin = m_particleRadius * 1.5f;
     
-    // 遍历所有粒子，检测与物理世界的碰撞
     for (auto& particle : m_particles) {
-        rp3d::Vector3 start(particle.position.x, particle.position.y, particle.position.z);
-        rp3d::Vector3 end = start + rp3d::Vector3(0, -m_particleRadius * 2, 0);
+        // 对每个粒子做多方向的射线检测
+        const std::vector<glm::vec3> directions = {
+            glm::vec3(0, -1, 0),   // 下
+            glm::vec3(0, 1, 0),    // 上
+            glm::vec3(1, 0, 0),    // 右
+            glm::vec3(-1, 0, 0),   // 左
+            glm::vec3(0, 0, 1),    // 前
+            glm::vec3(0, 0, -1)    // 后
+        };
         
-        rp3d::Ray ray(start, end);
-        CollisionCallback callback;
-        
-        world->raycast(ray, &callback);
-        
-        if (callback.hasHit) {
-            // 发生碰撞，调整位置
-            glm::vec3 normal = callback.hitNormal;
+        for (const auto& dir : directions) {
+            rp3d::Vector3 start(
+                particle.position.x, 
+                particle.position.y, 
+                particle.position.z
+            );
+            rp3d::Vector3 rayDir(dir.x, dir.y, dir.z);
+            rp3d::Vector3 end = start + rayDir * collisionMargin;
             
-            // 将粒子推出碰撞体
-            particle.position += normal * m_particleRadius * 0.5f;
+            rp3d::Ray ray(start, end);
             
-            // 反弹
-            float restitution = 0.3f;
-            particle.velocity -= (1.0f + restitution) * glm::dot(particle.velocity, normal) * normal;
+            // 创建Raycast回调
+            class SimpleRaycastCallback : public rp3d::RaycastCallback {
+            public:
+                bool hasHit = false;
+                glm::vec3 hitNormal;
+                float hitFraction = 1.0f;
+                
+                virtual rp3d::decimal notifyRaycastHit(const rp3d::RaycastInfo& info) override {
+                    if (info.hitFraction < hitFraction) {
+                        hasHit = true;
+                        hitNormal = glm::vec3(
+                            info.worldNormal.x,
+                            info.worldNormal.y,
+                            info.worldNormal.z
+                        );
+                        hitFraction = info.hitFraction;
+                    }
+                    return info.hitFraction;
+                }
+            };
+            
+            SimpleRaycastCallback callback;
+            world->raycast(ray, &callback);
+            
+            if (callback.hasHit && callback.hitFraction < 1.0f) {
+                // 计算穿透深度
+                float penetration = collisionMargin * (1.0f - callback.hitFraction);
+                
+                // 推出碰撞体
+                particle.position += callback.hitNormal * penetration;
+                particle.predictedPos = particle.position;
+                
+                // 反弹速度
+                float restitution = 0.3f;
+                float vn = glm::dot(particle.velocity, callback.hitNormal);
+                if (vn < 0) {
+                    particle.velocity -= (1.0f + restitution) * vn * callback.hitNormal;
+                    
+                    // 摩擦力
+                    glm::vec3 tangent = particle.velocity - vn * callback.hitNormal;
+                    particle.velocity -= tangent * 0.3f;
+                }
+            }
         }
     }
 }

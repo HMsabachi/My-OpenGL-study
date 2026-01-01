@@ -51,6 +51,8 @@ public:
     void setRestDensity(float density) { m_restDensity = density; }
     void setParticleRadius(float radius) { m_particleRadius = radius; }
     void setCohesionStrength(float strength) { m_cohesionStrength = strength; }
+
+	float getCohesionStrength() const { return m_cohesionStrength; }
     
 private:
     // PBF算法步骤

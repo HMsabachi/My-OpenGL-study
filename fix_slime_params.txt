@@ -1,7 +1,0 @@
-﻿请将 engine.cpp 的 setupDemoData() 函数中的史莱姆参数改为：
-
-    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 0.0f, 0.0f), 1.5f, 400, slimeShader, 0);
-    
-    mySlime->setRestDensity(1000.0f);       // 安全值
-    mySlime->setParticleRadius(0.12f);      
-    mySlime->setCohesionStrength(5.0f);     // 安全值

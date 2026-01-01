@@ -60,10 +60,10 @@ void Engine::update()
         // 物体控制模式 - 摄像头可以旋转但不移动
         auto mOffset = myApp->getMouseMoveDistance();
         
-        // ✅ 修复：限制鼠标移动距离，防止异常值
-        const float maxMouseMove = 50.0f;  // 降低最大合理的鼠标移动距离（从100改为50）
+        // 限制鼠标移动距离，防止异常值
+        const float maxMouseMove = 50.0f;  // 降低最大合理的鼠标移动距离
         
-        // ✅ 如果移动距离异常大，直接忽略这一帧的鼠标输入
+        // 如果移动距离异常大，直接忽略这一帧的鼠标输入
         if (glm::length(mOffset) > maxMouseMove) {
             mOffset = glm::vec2(0.0f);  // 重置为0，忽略异常输入
         } else {
@@ -254,9 +254,11 @@ void Engine::setupDemoData()
     Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 1.5f, 500, slimeShader, 0);
     
     // 调整史莱姆参数以获得更好的流体效果
-    mySlime->setRestDensity(50.0f);        // 合理的密度
-    mySlime->setParticleRadius(0.12f);      // 增大粒子
-    mySlime->setCohesionStrength(5500.0f);     // 中等向心力
+    mySlime->setRestDensity(70.0f);      // 恢复合理密度
+    mySlime->setParticleRadius(0.12f);     // 粒子大小
+    mySlime->setCohesionStrength(100.0f);    // 中等向心力，配合新的力学模型
+
+	mySlime->setName("PlayerSlime"); // 设置名称
     
     // 绑定到玩家控制器
     playerController->setControlledObject(mySlime);
@@ -265,16 +267,7 @@ void Engine::setupDemoData()
     // 添加到场景
     scene->addObject(mySlime);
     
-    std::cout << "\n========== 场景设置完成 ==========" << std::endl;
-    std::cout << "史莱姆位置: (-3, 3, 0) - 将从空中掉落" << std::endl;
-    std::cout << "控制说明:" << std::endl;
-    std::cout << "   - 按 'Alt' 切换鼠标捕获" << std::endl;
-    std::cout << "   - 按 'C' 切换控制模式（摄像机/物体）" << std::endl;
-    std::cout << "   - WASD: 水平移动" << std::endl;
-    std::cout << "   - Space: 向上" << std::endl;
-    std::cout << "   - Shift: 向下" << std::endl;
-    std::cout << "提示: 试试让史莱姆跳跃或快速移动来看流体效果！" << std::endl;
-    std::cout << "==================================\n" << std::endl;
+   
 }
 
 void Engine::updateGlobalUniforms() // 更新所有 Shader 的全局 Uniform
@@ -353,16 +346,25 @@ void Engine::keyCallback(int key, int action, int mods)
             self->mouseCaptured = !self->mouseCaptured;
             glfwSetInputMode(window, GLFW_CURSOR, self->mouseCaptured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
             
-            // ✅ 修复：切换鼠标捕获状态时，重置鼠标位置记录，防止异常跳变
+            
             myApp->lastMousePos = myApp->getMousePos();
             break;
         
         case GLFW_KEY_C:
-            // ✅ 按 C 键切换控制模式
+            // 按 C 键切换控制模式
             self->playerController->toggleControlMode();
             
-            // ✅ 修复：切换控制模式时，重置鼠标位置记录，防止异常跳变
+            
             myApp->lastMousePos = myApp->getMousePos();
+            break;
+		case GLFW_KEY_R:
+			Slime* slime = dynamic_cast<Slime*>(self->playerController->getControlledObject());
+			float cohesion = slime->getCohesionStrength();
+            if (cohesion == -1.0f)
+                slime->setCohesionStrength(100.0f);
+            else
+				slime->setCohesionStrength(-1.0f);
+            
             break;
     }
     
