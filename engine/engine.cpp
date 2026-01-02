@@ -197,16 +197,16 @@ void Engine::setupDemoData()
     sphereShader->setInt("texture1", 0);
     sphereShader->end();
     
-    // 配置 slime shader
+    // 配置 slime shader - 天蓝色史莱姆
     auto* slimeShader = shaderManager->getShader("slime");
     slimeShader->begin();
-    slimeShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+    slimeShader->set("uSlimeColor", glm::vec3(0.4f, 0.8f, 1.0f));  // 天蓝色 (Sky Blue)
     slimeShader->end();
     
-    // 配置 slime_mesh shader
+    // 配置 slime_mesh shader - 天蓝色史莱姆
     auto* slimeMeshShader = shaderManager->getShader("slime_mesh");
     slimeMeshShader->begin();
-    slimeMeshShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+    slimeMeshShader->set("uSlimeColor", glm::vec3(1.0f, 0.4f, 0.7f));  // 天蓝色 (Sky Blue)
     slimeMeshShader->end();
 
     // 设置相机
@@ -258,20 +258,20 @@ void Engine::setupDemoData()
     // 创建史莱姆
     auto* slimeParticleShader = shaderManager->getShader("slime");
     auto* slimeMeshShaderPtr = shaderManager->getShader("slime_mesh");
-    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, 3.0f, 0.0f), 2.0f, 600, 
+    Slime* mySlime = new Slime(this, glm::vec3(-3.0f, -3.1f, -1.0f), 1.7f, 600, 
                                slimeParticleShader, slimeMeshShaderPtr, 0);
     
     // 史莱姆参数
     mySlime->setRestDensity(50.0f);         // 密度
     mySlime->setParticleRadius(0.12f);      // 粒子大小
-    mySlime->setCohesionStrength(50.0f);     // 向心力
+    mySlime->setCohesionStrength(100.0f);     // 向心力
 
 	mySlime->setName("PlayerSlime"); // 设置名称
     
     // 玩家控制器，调整控制参数
     playerController->setControlledObject(mySlime);
     playerController->setMoveSpeed(15.0f);   // 移动速度
-    playerController->setMoveForce(10000.0f);   // 施加的力
+    playerController->setMoveForce(5000.0f);   // 施加的力
     
     // 添加到场景
     scene->addObject(mySlime);

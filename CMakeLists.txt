@@ -1,6 +1,7 @@
 ﻿# 设置 CMake 最低版本
 cmake_minimum_required(VERSION 3.12)
 
+
 # 设置项目名称
 PROJECT(learnOpenGL)
 
@@ -8,6 +9,8 @@ PROJECT(learnOpenGL)
 SET(CMAKE_CXX_STANDARD 17)
 
 # 设置全局编译选项
+#define GLM_ENABLE_EXPERIMENTAL
+add_compile_definitions(GLM_ENABLE_EXPERIMENTAL)
 add_definitions(-DDEBUG)
 
 # 设置第三方库

@@ -1,0 +1,307 @@
+﻿// ExampleUsage.cpp - 新框架使用示例
+// 这个文件展示了如何使用新的场景管理框架
+
+#include "scene/SceneManager.h"
+#include "scene/LightComponent.h"
+#include "scene/GameObject.h"
+#include "scene/Transform.h"
+
+// ====================================
+// 示例 1：创建基本场景
+// ====================================
+void Example1_BasicScene(Engine* engine) {
+    // 1. 创建场景管理器
+    SceneManager* sceneManager = new SceneManager(engine);
+    
+    // 2. 创建场景
+    Scene* mainScene = sceneManager->createScene("MainScene");
+    
+    // 3. 创建游戏对象
+    GameObject* cube = mainScene->createGameObject("Cube");
+    
+    // 4. 设置位置
+    cube->getTransform()->setLocalPosition(glm::vec3(0, 1, 0));
+    cube->getTransform()->setLocalRotationEuler(glm::vec3(0, 45, 0));
+    
+    // 5. 更新场景（每帧调用）
+    float deltaTime = 0.016f;
+    sceneManager->update(deltaTime);
+}
+
+// ====================================
+// 示例 2：层级关系
+// ====================================
+void Example2_Hierarchy(Scene* scene) {
+    // 创建父对象（比如一辆车）
+    GameObject* car = scene->createGameObject("Car");
+    car->getTransform()->setLocalPosition(glm::vec3(5, 0, 0));
+    
+    // 创建子对象（车轮）
+    GameObject* wheel1 = scene->createGameObject("Wheel1");
+    wheel1->setParent(car);
+    wheel1->getTransform()->setLocalPosition(glm::vec3(-1, -0.5f, 1));
+    
+    GameObject* wheel2 = scene->createGameObject("Wheel2");
+    wheel2->setParent(car);
+    wheel2->getTransform()->setLocalPosition(glm::vec3(1, -0.5f, 1));
+    
+    // 当车移动时，车轮会跟着移动
+    car->getTransform()->translate(glm::vec3(1, 0, 0));
+}
+
+// ====================================
+// 示例 3：灯光系统
+// ====================================
+void Example3_Lighting(Scene* scene) {
+    // 方向光（太阳）
+    GameObject* sun = scene->createGameObject("Sun");
+    auto* sunLight = sun->addComponent<DirectionalLight>(
+        glm::vec3(1, -1, -0.5f),      // 方向
+        glm::vec3(1.0f, 0.95f, 0.8f),  // 暖色调
+        1.0f                           // 强度
+    );
+    
+    // 点光源（路灯）
+    GameObject* streetLamp = scene->createGameObject("StreetLamp");
+    streetLamp->getTransform()->setLocalPosition(glm::vec3(0, 3, 0));
+    auto* lampLight = streetLamp->addComponent<PointLight>(
+        glm::vec3(1.0f, 0.8f, 0.5f),   // 橙黄色
+        2.0f,                          // 强度
+        10.0f                          // 范围
+    );
+    
+    // 聚光灯（手电筒）
+    GameObject* flashlight = scene->createGameObject("Flashlight");
+    auto* spotLight = flashlight->addComponent<SpotLight>(
+        glm::vec3(0, -1, 0),           // 向下照
+        glm::vec3(1.0f),               // 白色
+        3.0f,                          // 强度
+        12.5f,                         // 内锥角
+        17.5f,                         // 外锥角
+        15.0f                          // 范围
+    );
+}
+
+// ====================================
+// 示例 4：自定义组件
+// ====================================
+
+// 旋转组件 - 让对象持续旋转
+class RotatorComponent : public Component {
+private:
+    glm::vec3 m_rotationSpeed;  // 每秒旋转角度
+    
+public:
+    RotatorComponent(GameObject* owner, const glm::vec3& speed = glm::vec3(0, 90, 0))
+        : Component(owner, "Rotator"),
+          m_rotationSpeed(speed) {}
+    
+    void update(float deltaTime) override {
+        if (!m_owner) return;
+        
+        Transform* transform = m_owner->getTransform();
+        if (transform) {
+            transform->rotate(m_rotationSpeed * deltaTime);
+        }
+    }
+    
+    void setRotationSpeed(const glm::vec3& speed) {
+        m_rotationSpeed = speed;
+    }
+    
+    const char* getTypeName() const override { return "Rotator"; }
+};
+
+void Example4_CustomComponent(Scene* scene) {
+    // 创建旋转的立方体
+    GameObject* cube = scene->createGameObject("RotatingCube");
+    
+    // 添加旋转组件
+    auto* rotator = cube->addComponent<RotatorComponent>(
+        glm::vec3(0, 45, 0)  // 每秒绕Y轴旋转45度
+    );
+    
+    // 场景更新时，组件会自动调用
+    // 立方体会持续旋转
+}
+
+// ====================================
+// 示例 5：对象查找
+// ====================================
+void Example5_FindObjects(Scene* scene) {
+    // 按名称查找
+    GameObject* player = scene->findObjectByName("Player");
+    if (player) {
+        std::cout << "找到玩家！位置：" 
+                  << player->getTransform()->getWorldPosition().x << ", "
+                  << player->getTransform()->getWorldPosition().y << ", "
+                  << player->getTransform()->getWorldPosition().z << std::endl;
+    }
+    
+    // 按标签查找
+    GameObject* enemy1 = scene->createGameObject("Enemy1");
+    enemy1->setTag("Enemy");
+    
+    GameObject* enemy2 = scene->createGameObject("Enemy2");
+    enemy2->setTag("Enemy");
+    
+    // 查找所有敌人
+    auto enemies = scene->findObjectsByTag("Enemy");
+    std::cout << "找到 " << enemies.size() << " 个敌人" << std::endl;
+    
+    // 查找所有带灯光的对象
+    auto lightsObjects = scene->findObjectsWithComponent<LightComponent>();
+    std::cout << "场景中有 " << lightsObjects.size() << " 个灯光" << std::endl;
+}
+
+// ====================================
+// 示例 6：组件通信
+// ====================================
+
+// 健康值组件
+class HealthComponent : public Component {
+private:
+    float m_health;
+    float m_maxHealth;
+    
+public:
+    HealthComponent(GameObject* owner, float maxHealth = 100.0f)
+        : Component(owner, "Health"),
+          m_health(maxHealth),
+          m_maxHealth(maxHealth) {}
+    
+    void takeDamage(float damage) {
+        m_health -= damage;
+        if (m_health <= 0) {
+            m_health = 0;
+            std::cout << m_owner->getName() << " 已死亡！" << std::endl;
+        }
+    }
+    
+    void heal(float amount) {
+        m_health = glm::min(m_health + amount, m_maxHealth);
+    }
+    
+    float getHealth() const { return m_health; }
+    float getHealthPercentage() const { return m_health / m_maxHealth; }
+    
+    const char* getTypeName() const override { return "Health"; }
+};
+
+// 子弹组件（会对碰到的对象造成伤害）
+class BulletComponent : public Component {
+private:
+    float m_damage;
+    
+public:
+    BulletComponent(GameObject* owner, float damage = 10.0f)
+        : Component(owner, "Bullet"),
+          m_damage(damage) {}
+    
+    // 模拟碰撞检测
+    void onHit(GameObject* target) {
+        // 查找目标是否有健康值组件
+        if (auto* health = target->getComponent<HealthComponent>()) {
+            health->takeDamage(m_damage);
+            
+            // 子弹击中后销毁
+            m_owner->destroy();
+        }
+    }
+    
+    const char* getTypeName() const override { return "Bullet"; }
+};
+
+void Example6_ComponentCommunication(Scene* scene) {
+    // 创建敌人
+    GameObject* enemy = scene->createGameObject("Enemy");
+    auto* enemyHealth = enemy->addComponent<HealthComponent>(100.0f);
+    
+    // 创建子弹
+    GameObject* bullet = scene->createGameObject("Bullet");
+    auto* bulletScript = bullet->addComponent<BulletComponent>(25.0f);
+    
+    // 模拟子弹击中敌人
+    bulletScript->onHit(enemy);  // 敌人损失25生命值
+    
+    std::cout << "敌人剩余生命值: " << enemyHealth->getHealth() << std::endl;
+}
+
+// ====================================
+// 完整示例：游戏场景设置
+// ====================================
+void CompleteExample(Engine* engine) {
+    // 1. 创建场景管理器
+    SceneManager* sceneManager = new SceneManager(engine);
+    Scene* gameScene = sceneManager->createScene("GameScene");
+    
+    // 2. 设置灯光
+    GameObject* sun = gameScene->createGameObject("Sun");
+    sun->addComponent<DirectionalLight>(
+        glm::vec3(0.3f, -1.0f, -0.5f),
+        glm::vec3(1.0f, 0.95f, 0.85f),
+        1.0f
+    );
+    
+    // 3. 创建地面
+    GameObject* ground = gameScene->createGameObject("Ground");
+    ground->getTransform()->setLocalPosition(glm::vec3(0, -1, 0));
+    ground->getTransform()->setLocalScale(glm::vec3(50, 0.1f, 50));
+    // 这里可以添加 MeshRenderer 组件（待实现）
+    
+    // 4. 创建玩家
+    GameObject* player = gameScene->createGameObject("Player");
+    player->setTag("Player");
+    player->getTransform()->setLocalPosition(glm::vec3(0, 0, 0));
+    player->addComponent<HealthComponent>(100.0f);
+    // 可以添加 PlayerController 组件
+    
+    // 5. 创建敌人
+    for (int i = 0; i < 5; ++i) {
+        GameObject* enemy = gameScene->createGameObject("Enemy_" + std::to_string(i));
+        enemy->setTag("Enemy");
+        enemy->getTransform()->setLocalPosition(
+            glm::vec3(i * 2.0f - 4.0f, 0, 5)
+        );
+        enemy->addComponent<HealthComponent>(50.0f);
+        enemy->addComponent<RotatorComponent>(glm::vec3(0, 30, 0));
+    }
+    
+    // 6. 创建环境灯光
+    for (int i = 0; i < 4; ++i) {
+        GameObject* lamp = gameScene->createGameObject("Lamp_" + std::to_string(i));
+        lamp->getTransform()->setLocalPosition(
+            glm::vec3((i % 2) * 10 - 5, 3, (i / 2) * 10 - 5)
+        );
+        lamp->addComponent<PointLight>(
+            glm::vec3(1.0f, 0.8f, 0.5f),
+            2.0f,
+            10.0f
+        );
+    }
+    
+    // 7. 启动场景
+    gameScene->start();
+    
+    // 8. 游戏循环（在 Engine 中调用）
+    // while (running) {
+    //     float deltaTime = calculateDeltaTime();
+    //     sceneManager->update(deltaTime);
+    //     sceneManager->lateUpdate(deltaTime);
+    // }
+}
+
+/*
+使用说明：
+
+1. 在 Engine::init() 中调用：
+   CompleteExample(this);
+
+2. 在 Engine::render() 中调用：
+   sceneManager->update(deltaTime);
+
+3. 渲染时遍历所有对象：
+   for (auto obj : scene->findObjectsWithComponent<MeshRenderer>()) {
+       obj->getComponent<MeshRenderer>()->render();
+   }
+*/

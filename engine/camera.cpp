@@ -1,5 +1,6 @@
 ﻿#include "camera.h"
 #include "object/object.h"  // 引入 Object 类定义
+#include "../application/application.h"
 #include <algorithm>
 
 Camera::Camera(glm::vec3 position, glm::vec3 target, glm::vec3 up,

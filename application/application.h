@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <iostream>
 #include <glm/glm.hpp>
 
@@ -18,15 +18,15 @@ using ScrollCallback = void(*)(double xoffset, double yoffset);
 // Singleton class
 
 class Application {
-private: //ĞÂÔöË½ÈË³ÉÔ±
-	void(*_updateFunction)() = nullptr; // ¸üĞÂº¯ÊıÖ¸Õë
+private: //æ–°å¢ç§äººæˆå‘˜
+	void(*_updateFunction)() = nullptr; // æ›´æ–°å‡½æ•°æŒ‡é’ˆ
 
-public: //ĞÂÔö¹«ÓĞ³ÉÔ±
-	double getDeltaTime() const { return deltaTime; } // »ñÈ¡Ö¡¼ä¸ôÊ±¼ä
-	glm::vec2 getMousePos() const { return glm::vec2(mMouseX, mMouseY); } // »ñÈ¡Êó±êÎ»ÖÃ
-	glm::vec2 getMouseMoveDistance()  { auto distance = glm::vec2(mMouseX - lastMousePos.x, mMouseY - lastMousePos.y); lastMousePos = glm::vec2(mMouseX, mMouseY); return distance; } // »ñÈ¡Êó±êÒÆ¶¯¾à
+public: //æ–°å¢å…¬æœ‰æˆå‘˜
+	double getDeltaTime() const { return deltaTime; } // è·å–å¸§é—´éš”æ—¶é—´
+	glm::vec2 getMousePos() const { return glm::vec2(mMouseX, mMouseY); } // è·å–é¼ æ ‡ä½ç½®
+	glm::vec2 getMouseMoveDistance()  { auto distance = glm::vec2(mMouseX - lastMousePos.x, mMouseY - lastMousePos.y); lastMousePos = glm::vec2(mMouseX, mMouseY); return distance; } // è·å–é¼ æ ‡ç§»åŠ¨è·
 public:
-	glm::vec2 lastMousePos{ 0 }; // ÉÏÒ»´ÎÊó±êÎ»ÖÃ
+	glm::vec2 lastMousePos{ 0 }; // ä¸Šä¸€æ¬¡é¼ æ ‡ä½ç½®
 	double currentTime = 0.0;
 	double lastFrameTime = 0.0;
 	double deltaTime = 0.0;
@@ -38,7 +38,7 @@ public:
 	// static method to get the instance of the application
 	static Application* getInstance();
 
-	bool init(const int& width = 800 , const int& height = 600);
+	bool init(const int& width = 1920 , const int& height = 1280);
 
 	bool update();
 

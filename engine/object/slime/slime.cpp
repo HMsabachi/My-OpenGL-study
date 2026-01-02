@@ -568,7 +568,7 @@ void Slime::render() const {
         }
         
         // 设置史莱姆颜色
-        m_particleShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+        //m_particleShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
         
         // 实例化绘制所有粒子
         m_particleVAO->drawInstanced(m_particles.size(), m_sphereIndexCount);
@@ -591,7 +591,7 @@ void Slime::render() const {
         m_meshShader->set("uModel", glm::mat4(1.0f));
         
         // 设置史莱姆颜色
-        m_meshShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
+        //m_meshShader->set("uSlimeColor", glm::vec3(0.3f, 1.0f, 0.5f));
         
         // ✅ 渲染每个独立的网格块
         for (const auto& compMesh : m_componentMeshes) {

@@ -19,7 +19,7 @@ public:
         glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f),
         float fov = 45.0f,
-        float aspect = 1.0f,
+        float aspect = 16.0f / 9.0f,
         float near = 0.1f,
         float far = 100.0f);
 
